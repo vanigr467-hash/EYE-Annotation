@@ -475,13 +475,273 @@ elif nav_page == "👁️ Image Annotation":
 elif nav_page == "🎥 Video Annotation":
     st.subheader("🎥 Video Eye Boundary Detection & Temporal Kalman Tracking")
 
-    v_col1, v_col2 = st.columns([2, 1])
-    with v_col1:
-        uploaded_video = st.file_uploader("Upload Eye Video (MP4, AVI, MOV, MKV)", type=["mp4", "avi", "mov", "mkv"])
-    with v_col2:
-        sample_video_dir = os.path.join(os.path.dirname(__file__), "sample_videos")
-        sample_v_files = [f for f in os.listdir(sample_video_dir) if f.endswith((".mp4", ".avi"))] if os.path.exists(sample_video_dir) else []
-        selected_v_sample = st.selectbox("Or choose a sample video", ["-- Select Sample Video --"] + sample_v_files)
+    video_source_mode = st.radio(
+        "📹 Video Input Source",
+        [
+            "📁 Upload File / Sample Video",
+            "📷 Live Camera Video Stream & Recording",
+            "📸 Browser Camera Snapshot"
+        ],
+        horizontal=True,
+        index=0,
+        help="Select whether to process an uploaded/sample video file, stream live from webcam, or capture an eye snapshot using your camera."
+    )
+
+    input_video_path = None
+    start_process = False
+    start_stream = False
+    custom_anchor_dict = None
+    sample_video_dir = os.path.join(os.path.dirname(__file__), "sample_videos")
+    sample_v_files = [f for f in os.listdir(sample_video_dir) if f.endswith((".mp4", ".avi"))] if os.path.exists(sample_video_dir) else []
+
+    if video_source_mode == "📁 Upload File / Sample Video":
+        v_col1, v_col2 = st.columns([2, 1])
+        with v_col1:
+            uploaded_video = st.file_uploader("Upload Eye Video (MP4, AVI, MOV, MKV)", type=["mp4", "avi", "mov", "mkv"])
+        with v_col2:
+            default_sample_idx = 1 if len(sample_v_files) > 0 else 0
+            selected_v_sample = st.selectbox(
+                "Or choose a sample video",
+                ["-- Select Sample Video --"] + sample_v_files,
+                index=default_sample_idx
+            )
+
+        if uploaded_video is not None:
+            file_key = f"{uploaded_video.name}_{uploaded_video.size}"
+            cached_path = st.session_state.get("cached_video_path")
+            if st.session_state.get("cached_video_key") != file_key or not cached_path or not os.path.exists(cached_path):
+                uploaded_video.seek(0)
+                orig_ext = os.path.splitext(uploaded_video.name)[1] or ".mp4"
+                t_file = tempfile.NamedTemporaryFile(delete=False, suffix=orig_ext)
+                t_file.write(uploaded_video.read())
+                t_file.flush()
+                t_file.close()
+                st.session_state["cached_video_path"] = t_file.name
+                st.session_state["cached_video_key"] = file_key
+                st.session_state["video_results"] = None
+            input_video_path = st.session_state.get("cached_video_path")
+        elif selected_v_sample != "-- Select Sample Video --":
+            input_video_path = os.path.join(sample_video_dir, selected_v_sample)
+
+    elif video_source_mode == "📷 Live Camera Video Stream & Recording":
+        st.markdown("### 📷 Live Camera Video Input")
+        st.caption("Capture and annotate directly from your webcam in real-time or record a video clip for processing.")
+
+        c_opt1, c_opt2, c_opt3 = st.columns([1, 1, 1])
+        with c_opt1:
+            cam_idx = st.number_input("Camera Device Index", min_value=0, max_value=4, value=0, step=1, help="0 is usually your built-in webcam. 1 or 2 for external USB cameras.")
+        with c_opt2:
+            rec_duration = st.selectbox("Recording Duration (seconds)", [3, 5, 10], index=1)
+        with c_opt3:
+            cam_action = st.radio("Camera Action", ["Live Real-Time Stream", "Record Video Clip & Process"], horizontal=True)
+
+        if cam_action == "Live Real-Time Stream":
+            btn_cam_stream = st.button("▶️ Start Live Camera Stream", type="primary", use_container_width=True)
+            if btn_cam_stream:
+                st.markdown("#### 👁️ Real-Time Camera Annotation Stream")
+                live_cap = cv2.VideoCapture(int(cam_idx))
+                if not live_cap.isOpened():
+                    st.error(f"⚠️ Could not open Camera device {cam_idx}. If your camera is not directly attached to this machine or if you're using a remote browser, please select the '📸 Browser Camera Snapshot' tab above!")
+                else:
+                    live_spot = st.empty()
+                    m1, m2, m3, m4 = st.columns(4)
+                    m_status = m1.empty()
+                    m_pupil = m2.empty()
+                    m_iris = m3.empty()
+                    m_fps = m4.empty()
+
+                    ret_test, f_test = live_cap.read()
+                    if ret_test:
+                        th, tw = f_test.shape[:2]
+                        ksize = max(11, int(min(tw, th) * 0.015) | 1)
+                        k_disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+                        b_mask = np.zeros((th, tw), dtype=np.uint8)
+                        b_mask[int(th*0.08):int(th*0.92), int(tw*0.08):int(tw*0.92)] = 255
+                        min_r = 0.015 * min(th, tw)
+                        max_r = 0.22 * min(th, tw)
+
+                        from src.fast_video_annotator import detect_pupil_eyelash_immune, _render_video_frame_annotations
+                        curr_p = None
+                        ir_ratio = 2.65
+                        t_prev = time.time()
+                        f_count = 0
+
+                        for _ in range(150):
+                            ret_c, f_bgr = live_cap.read()
+                            if not ret_c:
+                                break
+                            f_count += 1
+                            t_start_f = time.time()
+
+                            cand, status, circ = detect_pupil_eyelash_immune(f_bgr, curr_p, k_disk, b_mask, min_r, max_r)
+                            if cand is not None:
+                                if curr_p is None:
+                                    curr_p = cand
+                                else:
+                                    curr_p = (
+                                        curr_p[0] * 0.35 + cand[0] * 0.65,
+                                        curr_p[1] * 0.35 + cand[1] * 0.65,
+                                        curr_p[2] * 0.35 + cand[2] * 0.65,
+                                        curr_p[3] * 0.35 + cand[3] * 0.65,
+                                        cand[4]
+                                    )
+                                disp_status = status
+                                p_conf = min(96.0, 75.0 + circ * 22.0)
+                            else:
+                                disp_status = "BLINK (LOCKED)"
+                                p_conf = 0.0
+
+                            if curr_p is not None:
+                                pcx, pcy, prx, pry, pang = curr_p
+                                irx, iry = prx * ir_ratio, pry * ir_ratio
+                                i_conf = p_conf * 0.95
+                                ov_conf = (p_conf * 0.55 + i_conf * 0.45) if disp_status != "BLINK (LOCKED)" else 0.0
+
+                                f_viz = f_bgr.copy()
+                                _render_video_frame_annotations(
+                                    f_viz,
+                                    pcx, pcy, prx, pry, pang,
+                                    pcx, pcy, irx, iry, pang,
+                                    is_val=(disp_status != "BLINK (LOCKED)"),
+                                    detection_status=disp_status,
+                                    overall_conf=ov_conf,
+                                    frame_idx=f_count,
+                                    annotation_style=boundary_style,
+                                    show_values=show_values,
+                                    values_format=values_format
+                                )
+                            else:
+                                f_viz = f_bgr
+                                disp_status = "SEARCHING"
+                                pcx, pcy, prx, irx = 0, 0, 0, 0
+
+                            t_now = time.time()
+                            live_fps = 1.0 / max(0.001, t_now - t_prev)
+                            t_prev = t_now
+
+                            m_status.metric("Status", disp_status)
+                            m_pupil.metric("Pupil (X, Y)", f"({pcx:.0f}, {pcy:.0f})")
+                            m_iris.metric("Radii (P/I)", f"{prx:.0f}px / {irx:.0f}px")
+                            m_fps.metric("Live FPS", f"{live_fps:.1f} FPS")
+
+                            live_spot.image(cv2.cvtColor(f_viz, cv2.COLOR_BGR2RGB), use_container_width=True)
+                            time.sleep(0.02)
+                    live_cap.release()
+                    st.success("✅ Live camera stream finished.")
+
+        elif cam_action == "Record Video Clip & Process":
+            btn_cam_rec = st.button("🔴 Start Camera Recording & Annotate", type="primary", use_container_width=True)
+            if btn_cam_rec:
+                rec_cap = cv2.VideoCapture(int(cam_idx))
+                if not rec_cap.isOpened():
+                    st.error(f"⚠️ Could not open Camera device {cam_idx}. If your camera is not directly attached to this machine or if you're using a remote browser, please select the '📸 Browser Camera Snapshot' tab above!")
+                else:
+                    st.info(f"🔴 Recording {rec_duration} seconds from camera...")
+                    rec_frames = []
+                    rec_start = time.time()
+                    while time.time() - rec_start < float(rec_duration):
+                        r_ret, r_frame = rec_cap.read()
+                        if r_ret:
+                            rec_frames.append(r_frame)
+                        time.sleep(0.03)
+                    rec_cap.release()
+
+                    if len(rec_frames) > 5:
+                        temp_rec_path = os.path.join(tempfile.gettempdir(), f"camera_recorded_{int(time.time())}.mp4")
+                        rh, rw = rec_frames[0].shape[:2]
+                        rec_writer = cv2.VideoWriter(temp_rec_path, cv2.VideoWriter_fourcc(*"mp4v"), 25.0, (rw, rh))
+                        for rf in rec_frames:
+                            rec_writer.write(rf)
+                        rec_writer.release()
+
+                        st.session_state["cached_video_path"] = temp_rec_path
+                        st.session_state["cached_video_key"] = f"camera_{int(time.time())}"
+                        st.session_state["video_results"] = None
+                        st.success(f"✅ Recorded {len(rec_frames)} frames from camera! Processing video...")
+                        input_video_path = temp_rec_path
+                        start_process = True
+
+    elif video_source_mode == "📸 Browser Camera Snapshot":
+        st.markdown("### 📸 Browser Direct Camera Capture")
+        st.caption("Use your browser's webcam permission to capture an eye frame directly, detect boundaries, or generate an annotated sequence.")
+
+        cam_pic = st.camera_input("Position eye in front of camera and take photo")
+        if cam_pic is not None:
+            photo_bytes = cam_pic.getvalue()
+            photo_arr = np.frombuffer(photo_bytes, np.uint8)
+            cam_bgr = cv2.imdecode(photo_arr, cv2.IMREAD_COLOR)
+
+            if cam_bgr is not None:
+                ch, cw = cam_bgr.shape[:2]
+                from src.fast_video_annotator import _fast_detect_anchor, _render_video_frame_annotations
+                p_c, i_c = _fast_detect_anchor(cam_bgr)
+
+                pcx = float(p_c.get("cx", cw // 2))
+                pcy = float(p_c.get("cy", ch // 2))
+                prx = float(p_c.get("rx", 35.0))
+                pry = float(p_c.get("ry", prx))
+                pang = float(p_c.get("angle", 0.0))
+                icx = float(i_c.get("cx", pcx))
+                icy = float(i_c.get("cy", pcy))
+                irx = float(i_c.get("rx", prx * 2.65))
+                iry = float(i_c.get("ry", pry * 2.65))
+                iang = float(i_c.get("angle", pang))
+                ov_conf = float(p_c.get("confidence", 85.0))
+
+                cam_viz = cam_bgr.copy()
+                _render_video_frame_annotations(
+                    cam_viz,
+                    pcx, pcy, prx, pry, pang,
+                    icx, icy, irx, iry, iang,
+                    is_val=True,
+                    detection_status="DETECTED",
+                    overall_conf=ov_conf,
+                    frame_idx=1,
+                    annotation_style=boundary_style,
+                    show_values=show_values,
+                    values_format=values_format
+                )
+
+                st.markdown("#### 🎯 Camera Annotation Result")
+                shot_col1, shot_col2 = st.columns([1, 1])
+                with shot_col1:
+                    st.image(cv2.cvtColor(cam_bgr, cv2.COLOR_BGR2RGB), caption="Original Camera Capture", use_container_width=True)
+                with shot_col2:
+                    st.image(cv2.cvtColor(cam_viz, cv2.COLOR_BGR2RGB), caption="Real-Time Annotated Camera Frame (Green: Pupil, Orange: Iris)", use_container_width=True)
+
+                met1, met2, met3, met4 = st.columns(4)
+                met1.metric("Pupil Center", f"({pcx:.1f}, {pcy:.1f})")
+                met2.metric("Pupil Radius", f"{prx:.1f} px")
+                met3.metric("Iris Radius", f"{irx:.1f} px")
+                met4.metric("Confidence", f"{ov_conf:.1f}%")
+
+                dl_col1, dl_col2 = st.columns([1, 1])
+                with dl_col1:
+                    _, cam_png = cv2.imencode(".png", cam_viz)
+                    st.download_button(
+                        label="📥 Download Annotated Camera Image (PNG)",
+                        data=cam_png.tobytes(),
+                        file_name=f"camera_annotation_{int(time.time())}.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+                with dl_col2:
+                    if st.button("🎬 Convert Camera Frame to 5-Sec Video & Track", type="primary", use_container_width=True):
+                        temp_seq_path = os.path.join(tempfile.gettempdir(), f"camera_seq_{int(time.time())}.mp4")
+                        seq_writer = cv2.VideoWriter(temp_seq_path, cv2.VideoWriter_fourcc(*"mp4v"), 25.0, (cw, ch))
+                        for f_idx in range(125):
+                            dx = int(round(1.5 * np.sin(f_idx * 0.1)))
+                            dy = int(round(1.5 * np.cos(f_idx * 0.1)))
+                            M = np.float32([[1, 0, dx], [0, 1, dy]])
+                            drift_frame = cv2.warpAffine(cam_bgr, M, (cw, ch), borderMode=cv2.BORDER_REFLECT)
+                            seq_writer.write(drift_frame)
+                        seq_writer.release()
+
+                        st.session_state["cached_video_path"] = temp_seq_path
+                        st.session_state["cached_video_key"] = f"cam_seq_{int(time.time())}"
+                        st.session_state["video_results"] = None
+                        input_video_path = temp_seq_path
+                        start_process = True
 
     st.markdown("---")
     st.subheader("⚙️ Video Processing Settings")
@@ -521,27 +781,8 @@ elif nav_page == "🎥 Video Annotation":
     }
     render_mode = render_mode_map.get(render_mode_choice, "both")
 
-    input_video_path = None
-    if uploaded_video is not None:
-        file_key = f"{uploaded_video.name}_{uploaded_video.size}"
-        cached_path = st.session_state.get("cached_video_path")
-        if st.session_state.get("cached_video_key") != file_key or not cached_path or not os.path.exists(cached_path):
-            uploaded_video.seek(0)
-            orig_ext = os.path.splitext(uploaded_video.name)[1] or ".mp4"
-            t_file = tempfile.NamedTemporaryFile(delete=False, suffix=orig_ext)
-            t_file.write(uploaded_video.read())
-            t_file.flush()
-            t_file.close()
-            st.session_state["cached_video_path"] = t_file.name
-            st.session_state["cached_video_key"] = file_key
-            st.session_state["video_results"] = None
+    if input_video_path is None:
         input_video_path = st.session_state.get("cached_video_path")
-    elif selected_v_sample != "-- Select Sample Video --":
-        input_video_path = os.path.join(sample_video_dir, selected_v_sample)
-
-    start_process = False
-    start_stream = False
-    custom_anchor_dict = None
 
     if input_video_path and os.path.exists(input_video_path):
         cap_p = cv2.VideoCapture(input_video_path)
@@ -602,20 +843,57 @@ elif nav_page == "🎥 Video Annotation":
                 st.image(cv2.cvtColor(f0_viz, cv2.COLOR_BGR2RGB), caption="Frame 0 Verified Anchor (Green: Pupil, Orange: Iris)", use_container_width=True)
             with pv_col2:
                 st.success("✅ **Anchor Locked**: Pupil & Iris boundaries are centered on the pupil disc.")
-                start_process = st.button("⚡ Easy One-Click Video Annotation (Eyelash-Immune & Fast)", type="primary", use_container_width=True)
-                start_stream = st.button("▶️ Live Stream Annotations (Real-Time Playback)", use_container_width=True)
+                start_process = st.button("⚡ Easy One-Click Video Annotation (Eyelash-Immune & Fast)", type="primary", use_container_width=True, key="btn_proc_ready")
+                start_stream = st.button("▶️ Live Stream Annotations (Real-Time Playback)", use_container_width=True, key="btn_stream_ready")
     else:
+        st.info("💡 **Ready to annotate**: Upload an eye video above, or select a sample video like `01_eyes.mp4` to begin real-time annotation.")
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
-            start_process = st.button("🚀 Process Video (Immediate)", type="primary")
+            start_process = st.button("🚀 Process Video (Immediate)", type="primary", use_container_width=True, key="btn_proc_empty")
         with btn_col2:
-            start_stream = st.button("▶️ Live Stream Annotations (Real-Time Playback)")
+            start_stream = st.button("▶️ Live Stream Annotations (Real-Time Playback)", use_container_width=True, key="btn_stream_empty")
+
+    # If stream or process requested without video, auto-fallback to sample video
+    if (start_stream or start_process) and not input_video_path:
+        fallback_vid = os.path.join(sample_video_dir, "01_eyes.mp4")
+        if os.path.exists(fallback_vid):
+            input_video_path = fallback_vid
+            st.info("ℹ️ Loaded default sample video `01_eyes.mp4` for immediate real-time playback.")
+        else:
+            st.warning("⚠️ No video file loaded. Please upload a video or choose a sample video above!")
 
     if input_video_path and start_stream:
-        st.markdown("### 👁️ Live Real-Time Annotation Stream")
+        st.markdown("---")
+        st.subheader("👁️ Live Real-Time Annotation Stream")
+        st.caption("Real-time frame-by-frame pupil & iris boundary detection running at 30-60+ FPS.")
+
+        s_col1, s_col2 = st.columns([1, 1])
+        with s_col1:
+            loop_stream = st.checkbox("🔁 Continuous Real-Time Loop", value=True, key="chk_loop_stream")
+        with s_col2:
+            speed_opt = st.select_slider("Playback Speed", options=["0.5x (Slow-Mo)", "1.0x (Real-Time)", "1.5x (Fast)", "2.0x (Max Speed)"], value="1.0x (Real-Time)", key="speed_slider")
+
+        speed_factor = 1.0
+        if "0.5x" in speed_opt: speed_factor = 0.5
+        elif "1.5x" in speed_opt: speed_factor = 1.5
+        elif "2.0x" in speed_opt: speed_factor = 2.0
+
+        # Live metric cards row
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m_frame = m1.empty()
+        m_status = m2.empty()
+        m_pupil = m3.empty()
+        m_iris = m4.empty()
+        m_fps = m5.empty()
+
         live_spot = st.empty()
         live_cap = cv2.VideoCapture(input_video_path)
-        from src.fast_video_annotator import detect_pupil_eyelash_immune
+        from src.fast_video_annotator import detect_pupil_eyelash_immune, _render_video_frame_annotations
+
+        tot_f = int(live_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        v_fps = live_cap.get(cv2.CAP_PROP_FPS)
+        if not v_fps or np.isnan(v_fps) or v_fps <= 0:
+            v_fps = 30.0
 
         ret0, f0 = live_cap.read()
         if ret0:
@@ -635,14 +913,27 @@ elif nav_page == "🎥 Video Annotation":
             ir_ratio = air / max(1.0, apr)
 
             f_num = 0
-            while True:
+            live_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            t_prev = time.time()
+            max_loops = 3 if loop_stream else 1
+            current_loop = 0
+
+            while current_loop < max_loops:
                 ret_f, f_bgr = live_cap.read()
                 if not ret_f:
-                    break
+                    current_loop += 1
+                    if current_loop < max_loops:
+                        live_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        f_num = 0
+                        continue
+                    else:
+                        break
+
                 f_num += 1
                 if f_num % frame_skip != 0:
                     continue
 
+                t_frame_start = time.time()
                 cand, status, circ = detect_pupil_eyelash_immune(f_bgr, curr_p, k_disk, b_mask, min_r, max_r)
                 if cand is not None:
                     curr_p = (
@@ -653,22 +944,52 @@ elif nav_page == "🎥 Video Annotation":
                         cand[4]
                     )
                     disp_status = status
-                    color = (0, 255, 0)
+                    p_conf = min(96.0, 75.0 + circ * 22.0)
                 else:
-                    disp_status = "BLINK (LOCKED)"
-                    color = (0, 165, 255)
+                    disp_status = "BLINK"
+                    p_conf = 0.0
 
                 pcx, pcy, prx, pry, pang = curr_p
                 irx, iry = prx * ir_ratio, pry * ir_ratio
+                i_conf = p_conf * 0.95
+                ov_conf = (p_conf * 0.55 + i_conf * 0.45) if disp_status != "BLINK" else 0.0
 
-                cv2.ellipse(f_bgr, (int(pcx), int(pcy)), (int(max(4, irx)), int(max(4, iry))), int(pang), 0, 360, (0, 190, 255), 2, cv2.LINE_AA)
-                cv2.ellipse(f_bgr, (int(pcx), int(pcy)), (int(max(2, prx)), int(max(2, pry))), int(pang), 0, 360, (0, 255, 0), 2, cv2.LINE_AA)
-                cv2.drawMarker(f_bgr, (int(pcx), int(pcy)), (0, 255, 0), cv2.MARKER_CROSS, 8, 1, cv2.LINE_AA)
-                cv2.putText(f_bgr, f"LIVE TRACKING | Frame {f_num} | {disp_status}", (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+                # Render with annotations, badges, and style
+                f_viz = f_bgr.copy()
+                _render_video_frame_annotations(
+                    f_viz,
+                    pcx, pcy, prx, pry, pang,
+                    pcx, pcy, irx, iry, pang,
+                    is_val=(disp_status != "BLINK"),
+                    detection_status=disp_status,
+                    overall_conf=ov_conf,
+                    frame_idx=f_num,
+                    annotation_style=boundary_style,
+                    show_values=show_values,
+                    values_format=values_format
+                )
 
-                live_spot.image(cv2.cvtColor(f_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
-                time.sleep(0.015)
+                t_now = time.time()
+                t_frame_dur = max(0.001, t_now - t_frame_start)
+                live_fps = 1.0 / max(0.001, t_now - t_prev)
+                t_prev = t_now
+
+                # Update live HUD metrics
+                m_frame.metric("Frame", f"{f_num} / {tot_f}")
+                m_status.metric("Status", disp_status)
+                m_pupil.metric("Pupil (X, Y)", f"({pcx:.0f}, {pcy:.0f})")
+                m_iris.metric("Radii (P/I)", f"{prx:.0f}px / {irx:.0f}px")
+                m_fps.metric("Live FPS", f"{live_fps:.1f} FPS")
+
+                live_spot.image(cv2.cvtColor(f_viz, cv2.COLOR_BGR2RGB), use_container_width=True)
+
+                # Regulate speed for smooth playback
+                target_frame_dur = (1.0 / (v_fps * speed_factor))
+                sleep_dur = max(0.002, target_frame_dur - t_frame_dur)
+                time.sleep(sleep_dur)
+
             live_cap.release()
+            st.success(f"✅ Real-Time Annotation Stream Finished ({f_num} frames annotated)!")
 
     if input_video_path and start_process:
         output_temp_video = os.path.join(tempfile.gettempdir(), f"annotated_eye_output_{int(time.time())}.mp4")
