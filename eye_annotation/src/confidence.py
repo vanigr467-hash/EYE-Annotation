@@ -1,72 +1,193 @@
-from typing import Dict, Any
-from src.pupil_detection import PupilResult
-from src.iris_detection import IrisResult
+"""
+Multi-Factor Confidence Fusion Module.
+
+Combines quantitative evidence from image quality, pupil candidate scoring,
+iris edge inlier support, geometric validity, ellipse fitting residuals, and temporal tracking:
+- Pupil Detection Confidence (0-100%)
+- Iris Detection Confidence (0-100%)
+- Overall Detection Confidence (0-100%)
+- Categorical Status: DETECTED / LOW CONFIDENCE / PARTIAL / NOT DETECTED
+"""
+
+from typing import Dict, Any, Optional, Tuple
+import numpy as np
+
+from src.config_constants import (
+    CONF_WEIGHT_GRADIENT,
+    CONF_WEIGHT_CONTRAST,
+    CONF_WEIGHT_COMPLETENESS,
+    CONF_WEIGHT_INLIER_RATIO,
+    CONF_WEIGHT_PLAUSIBILITY
+)
+from src.plausibility import validate_detection
+
+
+def compute_calibrated_confidence(
+    gradient_support: float,
+    darkness_contrast: float,
+    contour_completeness: float,
+    inlier_ratio: float,
+    plausibility_score: float,
+    is_valid: bool
+) -> Tuple[float, Dict[str, Any]]:
+    """
+    Computes calibrated confidence score using the strict physical gating formula:
+    confidence = (0.30 * gradient + 0.20 * contrast + 0.15 * completeness + 
+                  0.15 * inliers + 0.20 * plausibility) * hard_constraint_gate
+    
+    If any hard constraint fails, hard_constraint_gate = 0.0, ensuring confidence < 20% (0%).
+    """
+    g = float(np.clip(gradient_support, 0.0, 1.0))
+    d = float(np.clip(darkness_contrast, 0.0, 1.0))
+    c = float(np.clip(contour_completeness, 0.0, 1.0))
+    r = float(np.clip(inlier_ratio, 0.0, 1.0))
+    p = float(np.clip(plausibility_score, 0.0, 1.0))
+
+    raw_score = (
+        CONF_WEIGHT_GRADIENT * g +
+        CONF_WEIGHT_CONTRAST * d +
+        CONF_WEIGHT_COMPLETENESS * c +
+        CONF_WEIGHT_INLIER_RATIO * r +
+        CONF_WEIGHT_PLAUSIBILITY * p
+    )
+
+    hard_constraint_gate = 1.0 if is_valid else 0.0
+    final_confidence = round(float(raw_score * hard_constraint_gate * 100.0), 1)
+
+    components = {
+        "gradient_support": round(g, 3),
+        "darkness_contrast": round(d, 3),
+        "contour_completeness": round(c, 3),
+        "inlier_ratio": round(r, 3),
+        "plausibility_score": round(p, 3),
+        "hard_constraint_gate": hard_constraint_gate,
+        "raw_score": round(raw_score, 3),
+        "confidence": final_confidence
+    }
+
+    return final_confidence, components
+
 
 def compute_overall_confidence(
-    pupil_res: PupilResult,
-    iris_res: IrisResult
+    pupil_res: Any,
+    iris_res: Any,
+    validation_info: Optional[Dict[str, Any]] = None,
+    quality_info: Optional[Dict[str, Any]] = None,
+    weights: Optional[Dict[str, float]] = None,
+    frame_shape: Optional[Tuple[int, int, ...]] = None
 ) -> Dict[str, Any]:
     """
-    Evaluates multi-factor confidence rating for both pupil and iris detections.
-    Returns composite score, confidence category (High, Medium, Low), and warning text.
+    Computes unified composite detection confidence from multi-factor evidence,
+    strictly gated by geometric plausibility constraints.
     """
-    if not pupil_res.detected:
-        return {
-            "pupil_confidence": 0.0,
-            "pupil_level": "Low",
-            "iris_confidence": 0.0,
-            "iris_level": "Low",
-            "overall_confidence": 0.0,
-            "overall_level": "Low",
-            "warning": "CRITICAL: Pupil detection failed. Annotation is invalid."
-        }
+    default_weights = {
+        "pupil": 0.40,
+        "iris": 0.35,
+        "geometry": 0.15,
+        "quality": 0.10
+    }
+    w = weights if weights is not None else default_weights
 
-    # Pupil Confidence Level
-    p_conf = pupil_res.confidence
-    if p_conf >= 75.0:
-        p_level = "High"
-    elif p_conf >= 50.0:
-        p_level = "Medium"
-    else:
+    # Run plausibility validation if frame_shape provided
+    is_valid = True
+    failures = []
+    plaus_score = 1.0
+    if frame_shape is not None and pupil_res is not None:
+        is_valid, failures, plaus_score = validate_detection(pupil_res, iris_res, frame_shape)
+    elif validation_info is not None:
+        is_valid = validation_info.get("is_valid", True)
+        failures = validation_info.get("failures", [])
+        plaus_score = validation_info.get("plausibility_score", 1.0 if is_valid else 0.15)
+
+    hard_constraint_gate = 1.0 if is_valid else 0.0
+
+    # 1. Pupil Confidence
+    if pupil_res is None or not getattr(pupil_res, "detected", False):
+        p_conf = 0.0
         p_level = "Low"
-
-    # Iris Confidence Level
-    if not iris_res.detected:
-        i_conf = 20.0
-        i_level = "Low"
     else:
-        i_conf = iris_res.confidence
-        if i_conf >= 75.0:
-            i_level = "High"
-        elif i_conf >= 50.0:
-            i_level = "Medium"
-        else:
-            i_level = "Low"
+        p_raw = float(getattr(pupil_res, "confidence", 50.0))
+        p_conf = p_raw * hard_constraint_gate
+        p_level = "High" if p_conf >= 75.0 else ("Medium" if p_conf >= 50.0 else "Low")
 
-    # Overall Combined Confidence
-    overall_conf = (p_conf * 0.6) + (i_conf * 0.4)
-    if overall_conf >= 75.0:
+    # 2. Iris Confidence
+    if iris_res is None or not getattr(iris_res, "detected", False):
+        i_conf = 0.0
+        i_level = "Low"
+        i_quality = 0.0
+        i_inlier = 0.0
+    else:
+        i_raw = float(getattr(iris_res, "confidence", 50.0))
+        i_conf = i_raw * hard_constraint_gate
+        i_quality = float(getattr(iris_res, "quality_score", i_raw)) * hard_constraint_gate
+        i_inlier = float(getattr(iris_res, "inlier_ratio", 0.0))
+        i_level = "High" if i_conf >= 70.0 else ("Medium" if i_conf >= 45.0 else "Low")
+
+    # 3. Geometric Validity Score
+    geo_score = (plaus_score * 100.0) if is_valid else 0.0
+
+    # 4. Image Quality Modifier
+    q_score = 80.0
+    if quality_info is not None:
+        q_score = float(quality_info.get("quality_score", 75.0))
+
+    # Composite Score
+    if not is_valid or (p_conf == 0.0 and i_conf == 0.0):
+        overall_conf = 0.0
+    elif p_conf > 0 and i_conf == 0.0:
+        overall_conf = (p_conf * 0.55 + geo_score * 0.30 + q_score * 0.15) * hard_constraint_gate
+    else:
+        overall_conf = (
+            w.get("pupil", 0.40) * p_conf +
+            w.get("iris", 0.35) * i_conf +
+            w.get("geometry", 0.15) * geo_score +
+            w.get("quality", 0.10) * q_score
+        ) * hard_constraint_gate
+
+    overall_conf = float(np_clip(overall_conf, 0.0, 98.0))
+
+    # Categorical Status
+    if is_valid and overall_conf >= 70.0:
         overall_level = "High"
-    elif overall_conf >= 50.0:
+        status = "DETECTED"
+    elif is_valid and overall_conf >= 40.0:
         overall_level = "Medium"
+        status = "LOW CONFIDENCE" if (p_conf > 0 and i_conf > 0) else "PARTIAL"
+    elif is_valid and p_conf > 0 and i_conf == 0:
+        overall_level = "Low"
+        status = "PARTIAL"
     else:
         overall_level = "Low"
+        status = "NOT DETECTED"
 
-    # Generate user-friendly advice/warning
+    # Warnings
     warnings = []
-    if p_level == "Low":
-        warnings.append("Pupil boundary confidence is low. Ensure the eye is open and lighting is even.")
-    if i_level == "Low":
-        warnings.append("Iris boundary confidence is low. Shadows or eyelid occlusion may affect detection.")
+    if not is_valid:
+        warnings.append(f"Hard constraint violation: {', '.join(failures)}.")
+    if p_level == "Low" and is_valid:
+        warnings.append("Pupil detection confidence is low.")
+    if i_level == "Low" and p_level != "Low" and is_valid:
+        warnings.append("Iris boundary is partially occluded, blurry, or low contrast.")
 
-    warning_msg = " ".join(warnings) if warnings else "High confidence detection. Boundary annotations verified."
+    warning_msg = " ".join(warnings) if warnings else "High detection confidence. Boundaries validated."
 
     return {
         "pupil_confidence": round(p_conf, 1),
         "pupil_level": p_level,
         "iris_confidence": round(i_conf, 1),
         "iris_level": i_level,
+        "iris_quality_score": round(i_quality, 1),
+        "iris_inlier_ratio": round(i_inlier, 3),
         "overall_confidence": round(overall_conf, 1),
         "overall_level": overall_level,
+        "hard_constraint_gate": hard_constraint_gate,
+        "plausibility_score": round(plaus_score, 3),
+        "failures": failures,
+        "status": status,
         "warning": warning_msg
     }
+
+
+def np_clip(val: float, low: float, high: float) -> float:
+    return max(low, min(high, val))
+

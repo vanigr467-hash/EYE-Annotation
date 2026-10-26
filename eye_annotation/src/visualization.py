@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 import io
 import numpy as np
 import cv2
-from typing import Dict, Any
-from PIL import Image
+import pandas as pd
+from typing import Dict, Any, List
 
 def generate_intensity_profile_plot(
     profile_x: list,
@@ -46,6 +46,55 @@ def generate_intensity_profile_plot(
     plt.savefig(buf, format='png', bbox_inches='tight')
     plt.close(fig)
     return buf.getvalue()
+
+
+def generate_video_tracking_charts(df_logs: pd.DataFrame) -> bytes:
+    """
+    Renders multi-panel time-series tracking charts:
+    - Pupil X & Y position over time
+    - Pupil & Iris radius over time
+    - Confidence scores over time
+    """
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, dpi=120)
+    fig.patch.set_facecolor('#ffffff')
+
+    frames = df_logs["frame_number"]
+
+    # Chart 1: Pupil Center (X, Y) Position over time
+    ax1 = axes[0]
+    ax1.plot(frames, df_logs["pupil_center_x"], label="Pupil Center X", color="#1f77b4", linewidth=1.5)
+    ax1.plot(frames, df_logs["pupil_center_y"], label="Pupil Center Y", color="#ff7f0e", linewidth=1.5)
+    ax1.set_ylabel("Pixel Coordinates", fontsize=9)
+    ax1.set_title("Temporal Eye Tracking & Motion Stability", fontsize=11, fontweight="bold")
+    ax1.grid(True, linestyle=":", alpha=0.6)
+    ax1.legend(loc="upper right", fontsize=8)
+
+    # Chart 2: Pupil & Iris Radii over time
+    ax2 = axes[1]
+    ax2.plot(frames, df_logs["pupil_radius"], label="Pupil Radius (px)", color="#2ca02c", linewidth=1.5)
+    ax2.plot(frames, df_logs["iris_radius"], label="Iris Radius (px)", color="#d62728", linewidth=1.5)
+    ax2.set_ylabel("Radius (Pixels)", fontsize=9)
+    ax2.grid(True, linestyle=":", alpha=0.6)
+    ax2.legend(loc="upper right", fontsize=8)
+
+    # Chart 3: Detection Confidence over time
+    ax3 = axes[2]
+    ax3.plot(frames, df_logs["overall_confidence"], label="Overall Confidence (%)", color="#9467bd", linewidth=1.8)
+    ax3.plot(frames, df_logs["pupil_confidence"], label="Pupil Confidence", color="#17becf", linestyle="--", alpha=0.7)
+    ax3.plot(frames, df_logs["iris_confidence"], label="Iris Confidence", color="#e377c2", linestyle="--", alpha=0.7)
+    ax3.set_xlabel("Frame Number", fontsize=10)
+    ax3.set_ylabel("Confidence (%)", fontsize=9)
+    ax3.set_ylim(0, 105)
+    ax3.grid(True, linestyle=":", alpha=0.6)
+    ax3.legend(loc="lower right", fontsize=8)
+
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()
+
 
 def create_preprocessing_thumbnail_grid(prep_dict: Dict[str, Any]) -> Dict[str, np.ndarray]:
     """Prepares RGB representations of preprocessing pipeline stages for display."""

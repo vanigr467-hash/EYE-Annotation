@@ -1,0 +1,1262 @@
+{
+  "0": {
+    "frame_index": 0,
+    "pupil_center": [
+      320,
+      260
+    ],
+    "pupil_radius": 44.5,
+    "iris_center": [
+      320,
+      260
+    ],
+    "iris_radius": 122.4,
+    "detected": true
+  },
+  "1": {
+    "frame_index": 1,
+    "pupil_center": [
+      322,
+      259
+    ],
+    "pupil_radius": 44.3,
+    "iris_center": [
+      322,
+      259
+    ],
+    "iris_radius": 122.0,
+    "detected": true
+  },
+  "2": {
+    "frame_index": 2,
+    "pupil_center": [
+      324,
+      259
+    ],
+    "pupil_radius": 44.6,
+    "iris_center": [
+      324,
+      259
+    ],
+    "iris_radius": 122.5,
+    "detected": true
+  },
+  "3": {
+    "frame_index": 3,
+    "pupil_center": [
+      327,
+      258
+    ],
+    "pupil_radius": 45.6,
+    "iris_center": [
+      327,
+      258
+    ],
+    "iris_radius": 121.9,
+    "detected": true
+  },
+  "4": {
+    "frame_index": 4,
+    "pupil_center": [
+      329,
+      258
+    ],
+    "pupil_radius": 45.6,
+    "iris_center": [
+      329,
+      258
+    ],
+    "iris_radius": 121.9,
+    "detected": true
+  },
+  "5": {
+    "frame_index": 5,
+    "pupil_center": [
+      332,
+      257
+    ],
+    "pupil_radius": 46.3,
+    "iris_center": [
+      332,
+      257
+    ],
+    "iris_radius": 121.8,
+    "detected": true
+  },
+  "6": {
+    "frame_index": 6,
+    "pupil_center": [
+      334,
+      256
+    ],
+    "pupil_radius": 46.2,
+    "iris_center": [
+      334,
+      256
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "7": {
+    "frame_index": 7,
+    "pupil_center": [
+      336,
+      254
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      336,
+      254
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "8": {
+    "frame_index": 8,
+    "pupil_center": [
+      338,
+      253
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      338,
+      253
+    ],
+    "iris_radius": 123.7,
+    "detected": true
+  },
+  "9": {
+    "frame_index": 9,
+    "pupil_center": [
+      340,
+      251
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      340,
+      251
+    ],
+    "iris_radius": 123.7,
+    "detected": true
+  },
+  "10": {
+    "frame_index": 10,
+    "pupil_center": [
+      342,
+      249
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      342,
+      249
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "11": {
+    "frame_index": 11,
+    "pupil_center": [
+      344,
+      247
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      344,
+      247
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "12": {
+    "frame_index": 12,
+    "pupil_center": [
+      346,
+      245
+    ],
+    "pupil_radius": 48.2,
+    "iris_center": [
+      346,
+      245
+    ],
+    "iris_radius": 121.5,
+    "detected": true
+  },
+  "13": {
+    "frame_index": 13,
+    "pupil_center": [
+      347,
+      243
+    ],
+    "pupil_radius": 48.2,
+    "iris_center": [
+      347,
+      243
+    ],
+    "iris_radius": 121.5,
+    "detected": true
+  },
+  "14": {
+    "frame_index": 14,
+    "pupil_center": [
+      349,
+      241
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      349,
+      241
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "15": {
+    "frame_index": 15,
+    "pupil_center": [
+      350,
+      240
+    ],
+    "pupil_radius": 48.4,
+    "iris_center": [
+      350,
+      240
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "16": {
+    "frame_index": 16,
+    "pupil_center": [
+      351,
+      238
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      351,
+      238
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "17": {
+    "frame_index": 17,
+    "pupil_center": [
+      352,
+      236
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      352,
+      236
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "18": {
+    "frame_index": 18,
+    "pupil_center": [
+      353,
+      234
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      353,
+      234
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "19": {
+    "frame_index": 19,
+    "pupil_center": [
+      354,
+      232
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      354,
+      232
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "20": {
+    "frame_index": 20,
+    "pupil_center": [
+      354,
+      230
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      354,
+      230
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "21": {
+    "frame_index": 21,
+    "pupil_center": [
+      354,
+      228
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      354,
+      228
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "22": {
+    "frame_index": 22,
+    "pupil_center": [
+      354,
+      227
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      354,
+      227
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "23": {
+    "frame_index": 23,
+    "pupil_center": [
+      354,
+      225
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      354,
+      225
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "24": {
+    "frame_index": 24,
+    "pupil_center": [
+      354,
+      224
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      354,
+      224
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "25": {
+    "frame_index": 25,
+    "pupil_center": [
+      354,
+      223
+    ],
+    "pupil_radius": 46.2,
+    "iris_center": [
+      354,
+      223
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "26": {
+    "frame_index": 26,
+    "pupil_center": [
+      353,
+      222
+    ],
+    "pupil_radius": 46.2,
+    "iris_center": [
+      353,
+      222
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "27": {
+    "frame_index": 27,
+    "pupil_center": [
+      353,
+      221
+    ],
+    "pupil_radius": 46.2,
+    "iris_center": [
+      353,
+      221
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "28": {
+    "frame_index": 28,
+    "pupil_center": [
+      352,
+      221
+    ],
+    "pupil_radius": 45.1,
+    "iris_center": [
+      352,
+      221
+    ],
+    "iris_radius": 121.2,
+    "detected": true
+  },
+  "29": {
+    "frame_index": 29,
+    "pupil_center": [
+      351,
+      221
+    ],
+    "pupil_radius": 45.6,
+    "iris_center": [
+      351,
+      221
+    ],
+    "iris_radius": 121.9,
+    "detected": true
+  },
+  "30": {
+    "frame_index": 30,
+    "pupil_center": [
+      349,
+      221
+    ],
+    "pupil_radius": 44.6,
+    "iris_center": [
+      349,
+      221
+    ],
+    "iris_radius": 122.4,
+    "detected": true
+  },
+  "31": {
+    "frame_index": 31,
+    "pupil_center": [
+      348,
+      221
+    ],
+    "pupil_radius": 44.6,
+    "iris_center": [
+      348,
+      221
+    ],
+    "iris_radius": 122.5,
+    "detected": true
+  },
+  "32": {
+    "frame_index": 32,
+    "pupil_center": [
+      347,
+      221
+    ],
+    "pupil_radius": 43.3,
+    "iris_center": [
+      347,
+      221
+    ],
+    "iris_radius": 122.6,
+    "detected": true
+  },
+  "33": {
+    "frame_index": 33,
+    "pupil_center": [
+      345,
+      222
+    ],
+    "pupil_radius": 43.3,
+    "iris_center": [
+      345,
+      222
+    ],
+    "iris_radius": 122.7,
+    "detected": true
+  },
+  "34": {
+    "frame_index": 34,
+    "pupil_center": [
+      343,
+      223
+    ],
+    "pupil_radius": 42.6,
+    "iris_center": [
+      343,
+      223
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "35": {
+    "frame_index": 35,
+    "pupil_center": [
+      341,
+      224
+    ],
+    "pupil_radius": 42.5,
+    "iris_center": [
+      341,
+      224
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "36": {
+    "frame_index": 36,
+    "pupil_center": [
+      339,
+      225
+    ],
+    "pupil_radius": 41.3,
+    "iris_center": [
+      339,
+      225
+    ],
+    "iris_radius": 123.8,
+    "detected": true
+  },
+  "37": {
+    "frame_index": 37,
+    "pupil_center": [
+      337,
+      226
+    ],
+    "pupil_radius": 41.2,
+    "iris_center": [
+      337,
+      226
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "38": {
+    "frame_index": 38,
+    "pupil_center": [
+      335,
+      228
+    ],
+    "pupil_radius": 40.4,
+    "iris_center": [
+      335,
+      228
+    ],
+    "iris_radius": 122.6,
+    "detected": true
+  },
+  "39": {
+    "frame_index": 39,
+    "pupil_center": [
+      333,
+      229
+    ],
+    "pupil_radius": 40.5,
+    "iris_center": [
+      333,
+      229
+    ],
+    "iris_radius": 122.6,
+    "detected": true
+  },
+  "40": {
+    "frame_index": 40,
+    "pupil_center": [
+      330,
+      231
+    ],
+    "pupil_radius": 40.4,
+    "iris_center": [
+      330,
+      231
+    ],
+    "iris_radius": 122.6,
+    "detected": true
+  },
+  "41": {
+    "frame_index": 41,
+    "pupil_center": [
+      328,
+      233
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      328,
+      233
+    ],
+    "iris_radius": 123.2,
+    "detected": true
+  },
+  "42": {
+    "frame_index": 42,
+    "pupil_center": [
+      326,
+      235
+    ],
+    "pupil_radius": 39.5,
+    "iris_center": [
+      326,
+      235
+    ],
+    "iris_radius": 121.4,
+    "detected": true
+  },
+  "43": {
+    "frame_index": 43,
+    "pupil_center": [
+      323,
+      237
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      323,
+      237
+    ],
+    "iris_radius": 123.1,
+    "detected": true
+  },
+  "44": {
+    "frame_index": 44,
+    "pupil_center": [
+      321,
+      239
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      321,
+      239
+    ],
+    "iris_radius": 123.1,
+    "detected": true
+  },
+  "45": {
+    "frame_index": 45,
+    "pupil_center": [
+      319,
+      241
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      319,
+      241
+    ],
+    "iris_radius": 121.2,
+    "detected": true
+  },
+  "46": {
+    "frame_index": 46,
+    "pupil_center": [
+      317,
+      243
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      317,
+      243
+    ],
+    "iris_radius": 123.1,
+    "detected": true
+  },
+  "47": {
+    "frame_index": 47,
+    "pupil_center": [
+      314,
+      245
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      314,
+      245
+    ],
+    "iris_radius": 121.2,
+    "detected": true
+  },
+  "48": {
+    "frame_index": 48,
+    "pupil_center": [
+      312,
+      247
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      312,
+      247
+    ],
+    "iris_radius": 123.2,
+    "detected": true
+  },
+  "49": {
+    "frame_index": 49,
+    "pupil_center": [
+      310,
+      249
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      310,
+      249
+    ],
+    "iris_radius": 123.1,
+    "detected": true
+  },
+  "50": {
+    "frame_index": 50,
+    "pupil_center": [
+      307,
+      251
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      307,
+      251
+    ],
+    "iris_radius": 123.1,
+    "detected": true
+  },
+  "51": {
+    "frame_index": 51,
+    "pupil_center": [
+      305,
+      252
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      305,
+      252
+    ],
+    "iris_radius": 123.2,
+    "detected": true
+  },
+  "52": {
+    "frame_index": 52,
+    "pupil_center": [
+      303,
+      254
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      303,
+      254
+    ],
+    "iris_radius": 121.2,
+    "detected": true
+  },
+  "53": {
+    "frame_index": 53,
+    "pupil_center": [
+      301,
+      255
+    ],
+    "pupil_radius": 39.4,
+    "iris_center": [
+      301,
+      255
+    ],
+    "iris_radius": 121.1,
+    "detected": true
+  },
+  "54": {
+    "frame_index": 54,
+    "pupil_center": [
+      299,
+      256
+    ],
+    "pupil_radius": 40.5,
+    "iris_center": [
+      299,
+      256
+    ],
+    "iris_radius": 122.7,
+    "detected": true
+  },
+  "55": {
+    "frame_index": 55,
+    "pupil_center": [
+      297,
+      257
+    ],
+    "pupil_radius": 40.5,
+    "iris_center": [
+      297,
+      257
+    ],
+    "iris_radius": 122.7,
+    "detected": true
+  },
+  "56": {
+    "frame_index": 56,
+    "pupil_center": [
+      295,
+      258
+    ],
+    "pupil_radius": 40.5,
+    "iris_center": [
+      295,
+      258
+    ],
+    "iris_radius": 122.7,
+    "detected": true
+  },
+  "57": {
+    "frame_index": 57,
+    "pupil_center": [
+      293,
+      259
+    ],
+    "pupil_radius": 41.2,
+    "iris_center": [
+      293,
+      259
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "58": {
+    "frame_index": 58,
+    "pupil_center": [
+      292,
+      259
+    ],
+    "pupil_radius": 41.1,
+    "iris_center": [
+      292,
+      259
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "59": {
+    "frame_index": 59,
+    "pupil_center": [
+      291,
+      259
+    ],
+    "pupil_radius": 42.5,
+    "iris_center": [
+      291,
+      259
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "60": {
+    "frame_index": 60,
+    "pupil_center": [
+      289,
+      259
+    ],
+    "pupil_radius": 42.5,
+    "iris_center": [
+      289,
+      259
+    ],
+    "iris_radius": 121.5,
+    "detected": true
+  },
+  "61": {
+    "frame_index": 61,
+    "pupil_center": [
+      288,
+      259
+    ],
+    "pupil_radius": 43.3,
+    "iris_center": [
+      288,
+      259
+    ],
+    "iris_radius": 122.6,
+    "detected": true
+  },
+  "62": {
+    "frame_index": 62,
+    "pupil_center": [
+      287,
+      259
+    ],
+    "pupil_radius": 43.3,
+    "iris_center": [
+      287,
+      259
+    ],
+    "iris_radius": 122.6,
+    "detected": true
+  },
+  "63": {
+    "frame_index": 63,
+    "pupil_center": [
+      287,
+      258
+    ],
+    "pupil_radius": 44.6,
+    "iris_center": [
+      287,
+      258
+    ],
+    "iris_radius": 122.5,
+    "detected": true
+  },
+  "64": {
+    "frame_index": 64,
+    "pupil_center": [
+      286,
+      257
+    ],
+    "pupil_radius": 44.6,
+    "iris_center": [
+      286,
+      257
+    ],
+    "iris_radius": 122.4,
+    "detected": true
+  },
+  "65": {
+    "frame_index": 65,
+    "pupil_center": [
+      286,
+      256
+    ],
+    "pupil_radius": 45.6,
+    "iris_center": [
+      286,
+      256
+    ],
+    "iris_radius": 121.9,
+    "detected": true
+  },
+  "66": {
+    "frame_index": 66,
+    "pupil_center": [
+      286,
+      255
+    ],
+    "pupil_radius": 45.6,
+    "iris_center": [
+      286,
+      255
+    ],
+    "iris_radius": 121.9,
+    "detected": true
+  },
+  "67": {
+    "frame_index": 67,
+    "pupil_center": [
+      286,
+      253
+    ],
+    "pupil_radius": 46.3,
+    "iris_center": [
+      286,
+      253
+    ],
+    "iris_radius": 121.8,
+    "detected": true
+  },
+  "68": {
+    "frame_index": 68,
+    "pupil_center": [
+      286,
+      252
+    ],
+    "pupil_radius": 46.3,
+    "iris_center": [
+      286,
+      252
+    ],
+    "iris_radius": 121.8,
+    "detected": true
+  },
+  "69": {
+    "frame_index": 69,
+    "pupil_center": [
+      286,
+      250
+    ],
+    "pupil_radius": 46.3,
+    "iris_center": [
+      286,
+      250
+    ],
+    "iris_radius": 121.8,
+    "detected": true
+  },
+  "70": {
+    "frame_index": 70,
+    "pupil_center": [
+      286,
+      248
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      286,
+      248
+    ],
+    "iris_radius": 123.7,
+    "detected": true
+  },
+  "71": {
+    "frame_index": 71,
+    "pupil_center": [
+      287,
+      246
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      287,
+      246
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "72": {
+    "frame_index": 72,
+    "pupil_center": [
+      288,
+      244
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      288,
+      244
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "73": {
+    "frame_index": 73,
+    "pupil_center": [
+      289,
+      242
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      289,
+      242
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "74": {
+    "frame_index": 74,
+    "pupil_center": [
+      290,
+      240
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      290,
+      240
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "75": {
+    "frame_index": 75,
+    "pupil_center": [
+      291,
+      239
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      291,
+      239
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "76": {
+    "frame_index": 76,
+    "pupil_center": [
+      293,
+      237
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      293,
+      237
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "77": {
+    "frame_index": 77,
+    "pupil_center": [
+      294,
+      235
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      294,
+      235
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "78": {
+    "frame_index": 78,
+    "pupil_center": [
+      296,
+      233
+    ],
+    "pupil_radius": 48.2,
+    "iris_center": [
+      296,
+      233
+    ],
+    "iris_radius": 121.5,
+    "detected": true
+  },
+  "79": {
+    "frame_index": 79,
+    "pupil_center": [
+      298,
+      231
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      298,
+      231
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "80": {
+    "frame_index": 80,
+    "pupil_center": [
+      300,
+      229
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      300,
+      229
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "81": {
+    "frame_index": 81,
+    "pupil_center": [
+      302,
+      227
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      302,
+      227
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "82": {
+    "frame_index": 82,
+    "pupil_center": [
+      304,
+      226
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      304,
+      226
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "83": {
+    "frame_index": 83,
+    "pupil_center": [
+      306,
+      224
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      306,
+      224
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "84": {
+    "frame_index": 84,
+    "pupil_center": [
+      308,
+      223
+    ],
+    "pupil_radius": 48.3,
+    "iris_center": [
+      308,
+      223
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  },
+  "85": {
+    "frame_index": 85,
+    "pupil_center": [
+      311,
+      222
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      311,
+      222
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "86": {
+    "frame_index": 86,
+    "pupil_center": [
+      313,
+      222
+    ],
+    "pupil_radius": 47.6,
+    "iris_center": [
+      313,
+      222
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "87": {
+    "frame_index": 87,
+    "pupil_center": [
+      316,
+      221
+    ],
+    "pupil_radius": 47.5,
+    "iris_center": [
+      316,
+      221
+    ],
+    "iris_radius": 123.6,
+    "detected": true
+  },
+  "88": {
+    "frame_index": 88,
+    "pupil_center": [
+      318,
+      221
+    ],
+    "pupil_radius": 46.2,
+    "iris_center": [
+      318,
+      221
+    ],
+    "iris_radius": 121.7,
+    "detected": true
+  },
+  "89": {
+    "frame_index": 89,
+    "pupil_center": [
+      320,
+      220
+    ],
+    "pupil_radius": 46.2,
+    "iris_center": [
+      320,
+      220
+    ],
+    "iris_radius": 121.6,
+    "detected": true
+  }
+}

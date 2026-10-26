@@ -1,5 +1,8 @@
 import os
+import time
 import sys
+import tempfile
+import cv2
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -8,486 +11,987 @@ from PIL import Image
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.dirname(__file__))
 
+from src.image_quality import analyze_image_quality
+from src.eye_roi import detect_eye_roi, roi_to_full_coords
 from src.preprocessing import preprocess_eye_image
-from src.pupil_detection import detect_pupil
-from src.iris_detection import detect_iris
-from src.annotation import draw_automatic_annotations, COLOR_SCHEMES
+from src.eyelid_mask import detect_eyelid_mask
+from src.pupil_detector import detect_pupil, PupilResult
+from src.iris_detector import detect_iris, IrisResult
+from src.validation import validate_detection_pair
 from src.confidence import compute_overall_confidence
-from src.analytics import compute_eye_analytics
-from src.visualization import generate_intensity_profile_plot, create_preprocessing_thumbnail_grid
+from src.annotation import draw_automatic_annotations, draw_annotation_only_mask, COLOR_SCHEMES
+from src.gaze_tracking import calculate_gaze_vector
+from src.analytics import compute_eye_analytics, compute_video_plr_dynamics
+from src.diagnostics import generate_diagnostics_image_grid, get_diagnostics_report
+from src.video_processor import process_eye_video
+from src.visualization import (
+    generate_intensity_profile_plot,
+    generate_video_tracking_charts
+)
+from src.export import (
+    export_image_metrics_csv,
+    export_video_metrics_csv,
+    export_video_metrics_json,
+    export_coco_keypoints_json,
+    export_yolo_keypoints_txt
+)
 from utils.image_utils import (
-    load_image_from_bytes, numpy_to_png_bytes, resize_if_large,
-    export_results_to_csv, export_points_to_json, create_batch_zip
+    load_image_from_bytes, numpy_to_png_bytes, resize_if_large
 )
 from utils.synthetic_eye import generate_synthetic_eye
 
 # Page Configuration
 st.set_page_config(
-    page_title="Automated Eye Annotation",
+    page_title="Advanced Automatic Eye Annotation System",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Professional UI Styling
+# Professional CSS Styling
 st.markdown("""
 <style>
-    .main-title {
+    .main-header {
         font-size: 2.3rem;
-        font-weight: 700;
-        color: #1E293B;
+        font-weight: 800;
+        color: #0F172A;
+        letter-spacing: -0.5px;
         margin-bottom: 0.2rem;
     }
-    .sub-title {
+    .sub-header {
         font-size: 1.1rem;
-        color: #64748B;
+        color: #475569;
         margin-bottom: 1.5rem;
     }
-    .metric-card {
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .metric-val {
-        font-size: 1.6rem;
+    .status-badge {
+        display: inline-block;
+        padding: 0.35rem 0.85rem;
+        border-radius: 20px;
         font-weight: 700;
-        color: #0F172A;
-    }
-    .metric-label {
         font-size: 0.85rem;
-        color: #475569;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
     }
-    .confidence-high {
+    .badge-detected {
         background-color: #DCFCE7;
-        color: #166534;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
+        color: #15803D;
+        border: 1px solid #86EFAC;
     }
-    .confidence-med {
+    .badge-low-confidence {
         background-color: #FEF9C3;
-        color: #854D0E;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
+        color: #A16207;
+        border: 1px solid #FDE047;
     }
-    .confidence-low {
+    .badge-partial {
+        background-color: #E0E7FF;
+        color: #3730A3;
+        border: 1px solid #A5B4FC;
+    }
+    .badge-not-detected {
         background-color: #FEE2E2;
-        color: #991B1B;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
+        color: #B91C1C;
+        border: 1px solid #FCA5A5;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Application Header
-st.markdown('<div class="main-title">👁️ Automated Eye Annotation System</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">AI-assisted automatic detection of pupil and iris boundaries without manual point-by-point annotation</div>', unsafe_allow_html=True)
+# Main Title
+st.markdown('<div class="main-header">👁️ ADVANCED AUTOMATED EYE ANNOTATION SYSTEM</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Multi-Stage Hybrid Pipeline: Eye ROI Isolation, Eyelid Masking, Constrained Iris Search & Kalman Tracking</div>', unsafe_allow_html=True)
 
-# Sidebar Configuration
-st.sidebar.header("⚙️ Controls & Parameters")
-
-# Navigation / Mode Tabs
-app_mode = st.sidebar.radio(
-    "Select Operating Mode",
-    ["👁️ Single Image Mode", "📁 Batch Processing Mode", "🧪 Synthetic Benchmark Lab", "📊 Biometric Analytics", "🎓 How It Works"]
+# Sidebar Navigation & Controls
+st.sidebar.title("📌 Navigation")
+nav_page = st.sidebar.radio(
+    "Go to",
+    [
+        "🏠 Dashboard Overview",
+        "👁️ Image Annotation",
+        "🎥 Video Annotation",
+        "🎞️ Frame Explorer",
+        "📊 Analytics & Graphs",
+        "🔬 Detection Diagnostics",
+        "ℹ️ About & Methodology"
+    ]
 )
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🔬 Detection Parameters")
+st.sidebar.subheader("🔬 Advanced Detection Controls")
 
-fit_mode = st.sidebar.selectbox("Fitting Geometry", ["circle", "ellipse"], index=0, help="Select circle or ellipse fitting for pupil boundary.")
-num_points = st.sidebar.slider("Annotation Boundary Points", min_value=16, max_value=128, value=32, step=8, help="Number of points generated around pupil/iris.")
-sensitivity = st.sidebar.slider("Detection Sensitivity", min_value=0.1, max_value=1.0, value=0.5, step=0.1)
-clahe_clip = st.sidebar.slider("CLAHE Contrast Clip Limit", min_value=1.0, max_value=5.0, value=2.0, step=0.5)
+fit_mode = st.sidebar.selectbox("Fitting Geometry", ["ellipse", "circle"], index=0)
+use_roi = st.sidebar.checkbox("Isolate Eye ROI First", value=True)
+use_eyelid_mask = st.sidebar.checkbox("Eyelid & Eyelash Masking", value=True)
+use_starburst = st.sidebar.checkbox("Starburst RANSAC Pupil Refinement", value=True)
+prep_mode = st.sidebar.selectbox("Preprocessing Ensemble", ["Auto-Select", "Variant A (CLAHE+Bilateral)", "Variant B (Gamma+CLAHE)", "Variant C (Morph Contrast)", "Variant D (Illumination Norm)"], index=0)
+num_points = st.sidebar.select_slider("Annotation Points", options=[8, 16, 32, 64, 128], value=64)
+sensitivity = st.sidebar.slider("Detection Sensitivity", 0.1, 1.0, 0.5, 0.05)
 glint_removal = st.sidebar.checkbox("Specular Glint Inpainting", value=True)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🎨 Visual Overlay Settings")
+st.sidebar.subheader("🎨 Visual Overlay & Annotation Settings")
 theme = st.sidebar.selectbox("Color Theme", list(COLOR_SCHEMES.keys()), index=0)
+
+boundary_style = st.sidebar.selectbox(
+    "Boundary Representation",
+    [
+        "Circles / Ellipses",
+        "Circles + Numbers",
+        "Numbers Only",
+        "Keypoints / Dots Only",
+        "Full (Curves + Points + Numbers)"
+    ],
+    index=0,
+    help="Select how boundaries are rendered: standard curves, with numerical coordinate & radius badges, numbers-only, or discrete keypoints."
+)
+show_values = st.sidebar.checkbox(
+    "Show Values on Boundary",
+    value=(boundary_style in ["Circles + Numbers", "Numbers Only", "Full (Curves + Points + Numbers)"]),
+    help="Overlay numerical values (radius, center coordinates) next to the detected boundaries."
+)
+values_format = st.sidebar.selectbox(
+    "Values Callout Format",
+    [
+        "Radius & Center (r, x, y)",
+        "Radius only (r)",
+        "Full Geometry (cx, cy, rx, ry)"
+    ],
+    index=0,
+    help="Format of numerical value badges shown on boundaries."
+)
+
 show_pupil_layer = st.sidebar.checkbox("Show Pupil Boundary", value=True)
 show_iris_layer = st.sidebar.checkbox("Show Iris Boundary", value=True)
+show_gaze_arrow = st.sidebar.checkbox("Show 2D Gaze Direction Arrow", value=False)
 show_centers_layer = st.sidebar.checkbox("Show Center Crosshairs", value=True)
 show_points_layer = st.sidebar.checkbox("Show Boundary Points", value=True)
 show_labels_layer = st.sidebar.checkbox("Show Point Labels", value=False)
-show_prep_checkbox = st.sidebar.checkbox("Show Preprocessing Pipeline", value=False)
+show_boundary_evidence = st.sidebar.checkbox("Show Iris Evidence (Debug)", value=False)
+
+# Session State Initialization
+if "video_results" not in st.session_state:
+    st.session_state["video_results"] = None
+if "last_image_data" not in st.session_state:
+    st.session_state["last_image_data"] = None
 
 
-# Helper function to process a single image array
-def process_single_eye_image(img_rgb: np.ndarray):
-    resized_img, scale = resize_if_large(img_rgb, max_dim=1000)
+# ==========================================
+# 1. DASHBOARD OVERVIEW
+# ==========================================
+if nav_page == "🏠 Dashboard Overview":
+    st.subheader("Welcome to the Hybrid Automated Eye Annotation Platform")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.info("### 👁️ Image Mode\nIsolate Eye ROI, mask eyelids/lashes, detect pupil & iris with constrained annular search, and export COCO/YOLO datasets.")
+    with col2:
+        st.success("### 🎥 Video Mode\nProcess eye videos with 10D Kalman filter tracking, failure recovery, key-frame analytics, and PLR dilation velocity.")
+    with col3:
+        st.warning("### 🔬 Detection Diagnostics\nInspect all intermediate pipeline stages: ROI crop, CLAHE, Glint mask, Eyelid curves, and candidate inlier/outlier points.")
+
+    st.markdown("---")
+    st.markdown("### 🚀 Quick Benchmark & Pipeline Test")
+    if st.button("▶️ Run System Check (Synthetic Ground Truth Eye)"):
+        syn_rgb, gt = generate_synthetic_eye(pupil_offset=(10, -6))
+        prep = preprocess_eye_image(syn_rgb)
+        p_res = detect_pupil(prep, use_starburst_refinement=True)
+        eyelid_obj = detect_eyelid_mask(prep["gray_inpainted"], p_res.center, p_res.radius)
+        i_res = detect_iris(prep, p_res, eyelid_mask=eyelid_obj.valid_mask, fit_mode=fit_mode)
+        ann_rgb, _ = draw_automatic_annotations(
+            syn_rgb, p_res, i_res, num_points=64,
+            show_gaze_arrow=False, show_boundary_evidence=True,
+            eyelid_mask_obj=eyelid_obj,
+            boundary_style=boundary_style,
+            show_values=show_values,
+            values_format=values_format
+        )
+
+        b1, b2 = st.columns(2)
+        with b1:
+            st.image(syn_rgb, caption="Synthetic Input Image", use_container_width=True)
+        with b2:
+            st.image(ann_rgb, caption="Pipeline Output with Eyelid Mask & Boundary Evidence", use_container_width=True)
+
+        st.success(
+            f"✅ Benchmark Complete! Pupil: Center={p_res.center}, Radius={p_res.radius:.1f}px (GT={gt['pupil_radius']}). "
+            f"Iris: Center={i_res.center}, Radius={i_res.radius:.1f}px (GT={gt['iris_radius']}), "
+            f"Quality={i_res.quality_score:.1f}%, Status={i_res.status}"
+        )
+
+
+# ==========================================
+# 2. IMAGE ANNOTATION MODE
+# ==========================================
+elif nav_page == "👁️ Image Annotation":
+    st.subheader("👁️ Automatic Pupil & Iris Annotation")
+
+    up_col1, up_col2 = st.columns([2, 1])
+    with up_col1:
+        uploaded_file = st.file_uploader("Upload Eye Image (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
+    with up_col2:
+        sample_dir = os.path.join(os.path.dirname(__file__), "sample_images")
+        sample_files = [f for f in os.listdir(sample_dir) if f.endswith((".jpg", ".png"))] if os.path.exists(sample_dir) else []
+        selected_sample = st.selectbox("Or pick a sample image", ["-- Select Sample --"] + sample_files)
+
+    img_input = None
+    image_name = "eye_image.png"
+
+    if uploaded_file is not None:
+        img_input = load_image_from_bytes(uploaded_file.read())
+        image_name = uploaded_file.name
+    elif selected_sample != "-- Select Sample --":
+        sample_path = os.path.join(sample_dir, selected_sample)
+        with open(sample_path, "rb") as f:
+            img_input = load_image_from_bytes(f.read())
+        image_name = selected_sample
+
+    if img_input is None:
+        img_input, _ = generate_synthetic_eye(pupil_offset=(8, -5))
+        st.info("💡 Displaying default synthetic eye image. Upload a custom image or pick a sample above.")
+
+    resized_img, _ = resize_if_large(img_input, max_dim=1000)
+    h, w = resized_img.shape[:2]
+
+    # 1. Quality Assessment
+    gray_eval = resized_img if len(resized_img.shape) == 2 else cv2.cvtColor(resized_img, cv2.COLOR_RGB2GRAY)
+    quality_info = analyze_image_quality(gray_eval)
+    if quality_info["is_low_quality"]:
+        st.warning(f"⚠️ Image Quality Advisory: {quality_info['warning']}")
+
+    # 2. Eye ROI Detection (Optional)
+    if use_roi:
+        roi_obj = detect_eye_roi(resized_img, padding_factor=0.25)
+        active_img = roi_obj.crop
+        rx, ry, rw, rh = roi_obj.bbox
+    else:
+        active_img = resized_img
+        rx, ry, rw, rh = 0, 0, w, h
+        roi_obj = None
+
+    # 3. Preprocessing Ensemble
+    var_map = {"Auto-Select": "auto", "Variant A (CLAHE+Bilateral)": "A", "Variant B (Gamma+CLAHE)": "B", "Variant C (Morph Contrast)": "C", "Variant D (Illumination Norm)": "D"}
     prep_dict = preprocess_eye_image(
-        resized_img,
-        clahe_clip=clahe_clip,
-        blur_kernel=5,
-        glint_removal=glint_removal
+        active_img,
+        clahe_clip=2.0,
+        glint_removal=glint_removal,
+        force_variant=var_map.get(prep_mode, "auto")
     )
-    pupil_res = detect_pupil(prep_dict, sensitivity=sensitivity, fit_mode=fit_mode)
-    iris_res = detect_iris(prep_dict, pupil_res, sensitivity=sensitivity, fit_mode=fit_mode)
-    
+
+    # 4. Multi-Candidate Pupil Detection
+    pupil_res_roi = detect_pupil(
+        prep_dict,
+        sensitivity=sensitivity,
+        fit_mode=fit_mode,
+        use_starburst_refinement=use_starburst
+    )
+
+    # 5. Eyelid Masking
+    if use_eyelid_mask and pupil_res_roi.detected:
+        eyelid_obj = detect_eyelid_mask(
+            prep_dict["gray_inpainted"],
+            pupil_res_roi.center,
+            pupil_res_roi.radius
+        )
+        eyelid_mask = eyelid_obj.valid_mask
+    else:
+        eyelid_obj = None
+        eyelid_mask = None
+
+    # 6. Constrained Iris Detection
+    iris_res_roi = detect_iris(
+        prep_dict,
+        pupil_res_roi,
+        eyelid_mask=eyelid_mask,
+        sensitivity=sensitivity,
+        fit_mode=fit_mode
+    )
+
+    # Map coordinates from ROI back to full image
+    if use_roi and roi_obj is not None:
+        if pupil_res_roi.detected:
+            p_full_center = (pupil_res_roi.center[0] + rx, pupil_res_roi.center[1] + ry)
+            p_full_ellipse = None
+            if pupil_res_roi.ellipse is not None:
+                ((ecx, ecy), (ew, eh), eang) = pupil_res_roi.ellipse
+                p_full_ellipse = ((ecx + rx, ecy + ry), (ew, eh), eang)
+            pupil_res = PupilResult(
+                center=p_full_center,
+                radius=pupil_res_roi.radius,
+                radius_x=pupil_res_roi.radius_x,
+                radius_y=pupil_res_roi.radius_y,
+                rotation=pupil_res_roi.rotation,
+                ellipse=p_full_ellipse,
+                confidence=pupil_res_roi.confidence,
+                all_candidates=pupil_res_roi.all_candidates,
+                detected=pupil_res_roi.detected,
+                status=pupil_res_roi.status
+            )
+        else:
+            pupil_res = pupil_res_roi
+
+        if iris_res_roi.detected:
+            i_full_center = (iris_res_roi.center[0] + rx, iris_res_roi.center[1] + ry)
+            i_full_ellipse = None
+            if iris_res_roi.ellipse is not None:
+                ((icx, icy), (iw, ih), iang) = iris_res_roi.ellipse
+                i_full_ellipse = ((icx + rx, icy + ry), (iw, ih), iang)
+            iris_res = IrisResult(
+                center=i_full_center,
+                radius=iris_res_roi.radius,
+                radius_x=iris_res_roi.radius_x,
+                radius_y=iris_res_roi.radius_y,
+                rotation=iris_res_roi.rotation,
+                ellipse=i_full_ellipse,
+                confidence=iris_res_roi.confidence,
+                quality_score=iris_res_roi.quality_score,
+                inlier_ratio=iris_res_roi.inlier_ratio,
+                num_valid_rays=iris_res_roi.num_valid_rays,
+                inlier_points=[(p[0] + rx, p[1] + ry) for p in iris_res_roi.inlier_points],
+                outlier_points=[(p[0] + rx, p[1] + ry) for p in iris_res_roi.outlier_points],
+                boundary_candidates=[(p[0] + rx, p[1] + ry) for p in iris_res_roi.boundary_candidates],
+                detected=iris_res_roi.detected,
+                status=iris_res_roi.status
+            )
+        else:
+            iris_res = iris_res_roi
+    else:
+        pupil_res = pupil_res_roi
+        iris_res = iris_res_roi
+
+    # 7. Geometric Validation & Confidence Fusion
+    val_info = validate_detection_pair(pupil_res, iris_res, (h, w))
+    conf_dict = compute_overall_confidence(pupil_res, iris_res, validation_info=val_info, quality_info=quality_info)
+    analytics_dict = compute_eye_analytics(prep_dict, pupil_res, iris_res)
+
+    # 8. Render Annotations
     annotated_rgb, points_data = draw_automatic_annotations(
-        resized_img,
-        pupil_res,
-        iris_res,
-        num_points=num_points,
-        theme=theme,
+        resized_img, pupil_res, iris_res,
+        num_points=num_points, theme=theme,
+        show_pupil=show_pupil_layer, show_iris=show_iris_layer,
+        show_centers=show_centers_layer, show_points=show_points_layer,
+        show_labels=show_labels_layer, show_gaze_arrow=show_gaze_arrow,
+        show_boundary_evidence=show_boundary_evidence,
+        eyelid_mask_obj=eyelid_obj,
+        boundary_style=boundary_style,
+        show_values=show_values,
+        values_format=values_format
+    )
+
+    mask_only_rgb = draw_annotation_only_mask(
+        resized_img.shape, pupil_res, iris_res,
+        num_points=num_points, theme=theme,
+        boundary_style=boundary_style,
+        show_values=show_values,
+        values_format=values_format,
         show_pupil=show_pupil_layer,
         show_iris=show_iris_layer,
         show_centers=show_centers_layer,
         show_points=show_points_layer,
-        show_labels=show_labels_layer
+        eyelid_mask_obj=eyelid_obj
     )
-    
-    conf_dict = compute_overall_confidence(pupil_res, iris_res)
-    analytics_dict = compute_eye_analytics(prep_dict, pupil_res, iris_res)
-    
-    return {
-        "resized_rgb": resized_img,
+
+    # Save state for Diagnostics tab
+    st.session_state["last_image_data"] = {
+        "original_rgb": resized_img,
         "prep_dict": prep_dict,
         "pupil_res": pupil_res,
         "iris_res": iris_res,
-        "annotated_rgb": annotated_rgb,
-        "points_data": points_data,
-        "confidence": conf_dict,
-        "analytics": analytics_dict
+        "eyelid_obj": eyelid_obj,
+        "quality_info": quality_info,
+        "glint_mask": prep_dict["glint_mask"],
+        "conf_dict": conf_dict,
+        "val_info": val_info
     }
 
-
-# ==========================================
-# MODE 1: SINGLE IMAGE ANNOTATION
-# ==========================================
-if app_mode == "👁️ Single Image Mode":
-    st.subheader("1. Select or Upload Eye Image")
-    
-    upload_col1, upload_col2 = st.columns([2, 1])
-    
-    with upload_col1:
-        uploaded_file = st.file_uploader("Upload an Eye Image (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
-        
-    with upload_col2:
-        sample_dir = os.path.join(os.path.dirname(__file__), "sample_images")
-        sample_files = [f for f in os.listdir(sample_dir) if f.endswith((".jpg", ".png"))] if os.path.exists(sample_dir) else []
-        selected_sample = st.selectbox("Or choose a pre-loaded sample", ["-- None --"] + sample_files)
-
-    image_bytes = None
-    image_name = "eye_image.png"
-
-    if uploaded_file is not None:
-        image_bytes = uploaded_file.read()
-        image_name = uploaded_file.name
-    elif selected_sample != "-- None --":
-        sample_path = os.path.join(sample_dir, selected_sample)
-        with open(sample_path, "rb") as f:
-            image_bytes = f.read()
-        image_name = selected_sample
-
-    if image_bytes is None:
-        # Generate default demonstration synthetic eye if no upload
-        default_rgb, _ = generate_synthetic_eye(width=600, height=450, pupil_r=45, iris_r=120)
-        img_input = default_rgb
-        st.info("💡 Showing default synthetic eye image. Upload a custom image or pick a sample from above.")
-    else:
-        try:
-            img_input = load_image_from_bytes(image_bytes)
-        except Exception as e:
-            st.error(f"Error loading image: {e}")
-            st.stop()
-
-    # Process Image
-    results = process_single_eye_image(img_input)
-    
-    # Display Original vs Annotated Comparison
+    # Display Side-by-Side
     st.markdown("---")
-    st.subheader("2. Automatic Boundary Detection & Annotation")
-    
-    comp_col1, comp_col2 = st.columns(2)
-    
-    with comp_col1:
+    c_col1, c_col2 = st.columns(2)
+    with c_col1:
         st.markdown("#### 📷 Original Image")
-        st.image(results["resized_rgb"], use_container_width=True)
-        h_orig, w_orig = results["resized_rgb"].shape[:2]
-        st.caption(f"Resolution: {w_orig} x {h_orig} px | Channels: 3 (RGB)")
-        
-    with comp_col2:
-        st.markdown(f"#### 🎯 Automatically Annotated Image ({num_points} Points)")
-        st.image(results["annotated_rgb"], use_container_width=True)
-        st.caption("Pupil & Iris boundaries with automatically generated annotation markers")
+        st.image(resized_img, use_container_width=True)
+        st.caption(f"Dimensions: {w}x{h} px | Quality: {quality_info['quality_grade']} (Score: {quality_info['quality_score']}/100)")
+
+    with c_col2:
+        status_tag = conf_dict['status']
+        st.markdown(f"#### 🎯 Annotation Output [{status_tag}] ({num_points} Points)")
+        view_mode_img = st.radio(
+            "Display Mode",
+            ["👁️ Annotated Overlay", "🖤 Pure Annotation Mask (Annotation Only)"],
+            horizontal=True,
+            key="img_view_mode"
+        )
+        if view_mode_img.startswith("👁️"):
+            st.image(annotated_rgb, use_container_width=True)
+        else:
+            st.image(mask_only_rgb, use_container_width=True)
+
+        if iris_res.detected:
+            st.caption(f"Iris Inliers: {len(iris_res.inlier_points)} | Outliers: {len(iris_res.outlier_points)} | Quality: {iris_res.quality_score}%")
+        else:
+            st.caption(f"⚠️ {iris_res.message}")
 
     # Metrics Section
     st.markdown("---")
-    st.subheader("3. Detection Results & Biometric Measurements")
-    
-    an = results["analytics"]
-    cf = results["confidence"]
-    
-    m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
-    
-    with m_col1:
-        st.metric("Pupil Center (X, Y)", f"({an['pupil_center_x']}, {an['pupil_center_y']})")
-        st.metric("Pupil Radius", f"{an['pupil_radius_px']} px")
-        
-    with m_col2:
-        st.metric("Pupil Diameter", f"{an['pupil_diameter_px']} px")
-        st.metric("Pupil Area", f"{an['pupil_area_px2']} px²")
-        
-    with m_col3:
-        st.metric("Iris Center (X, Y)", f"({an['iris_center_x']}, {an['iris_center_y']})")
-        st.metric("Iris Radius", f"{an['iris_radius_px']} px")
-        
-    with m_col4:
-        st.metric("Iris Diameter", f"{an['iris_diameter_px']} px")
-        st.metric("Iris-to-Pupil Ratio", f"{an['iris_pupil_diameter_ratio']} x")
+    st.subheader("📊 Detection & Boundary Diagnostics")
 
-    with m_col5:
-        st.metric("Decentration (Δ Dist)", f"{an['center_decentration_distance']} px")
-        st.metric("Pupil Eccentricity", f"{an['pupil_eccentricity']}")
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1:
+        st.metric("Pupil Center (X, Y)", f"({analytics_dict['pupil_center_x']}, {analytics_dict['pupil_center_y']})")
+        st.metric("Pupil Radius", f"{analytics_dict['pupil_radius_px']} px")
+    with m2:
+        st.metric("Iris Center (X, Y)", f"({analytics_dict['iris_center_x']}, {analytics_dict['iris_center_y']})")
+        if fit_mode == "ellipse":
+            st.metric("Iris Axes (Rx, Ry)", f"{analytics_dict['iris_radius_x_px']}, {analytics_dict['iris_radius_y_px']} px")
+        else:
+            st.metric("Iris Radius", f"{analytics_dict['iris_radius_px']} px")
+    with m3:
+        st.metric("Iris Boundary Quality", f"{analytics_dict['iris_boundary_quality']}%")
+        st.metric("Iris Inlier Ratio", f"{analytics_dict['iris_inlier_ratio']}")
+    with m4:
+        st.metric("Iris-to-Pupil Ratio", f"{analytics_dict['iris_pupil_diameter_ratio']}x")
+        st.metric("Detection Status", conf_dict["status"])
+    with m5:
+        st.metric("Pupil Confidence", f"{conf_dict['pupil_confidence']}%")
+        st.metric("Overall Confidence", f"{conf_dict['overall_confidence']}%")
 
-    # Confidence Rating Card
-    st.markdown("#### 🛡️ Detection Confidence Rating")
-    conf_level = cf["overall_level"]
-    if conf_level == "High":
-        st.markdown(f'<span class="confidence-high">High Confidence ({cf["overall_confidence"]}%)</span>', unsafe_allow_html=True)
-    elif conf_level == "Medium":
-        st.markdown(f'<span class="confidence-med">Medium Confidence ({cf["overall_confidence"]}%)</span>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<span class="confidence-low">Low Confidence ({cf["overall_confidence"]}%)</span>', unsafe_allow_html=True)
-
-    st.write(cf["warning"])
-
-    # Download Results Buttons
+    # Exports
     st.markdown("---")
-    st.subheader("4. Download Results")
-
-    dl_col1, dl_col2, dl_col3 = st.columns(3)
-
-    annotated_png = numpy_to_png_bytes(results["annotated_rgb"])
-    results_csv = export_results_to_csv(an)
-    points_json = export_points_to_json(results["points_data"])
-
-    with dl_col1:
-        st.download_button(
-            label="📥 Download Annotated Image (PNG)",
-            data=annotated_png,
-            file_name=f"annotated_{image_name}",
-            mime="image/png"
-        )
-
-    with dl_col2:
-        st.download_button(
-            label="📊 Download Metrics (CSV)",
-            data=results_csv,
-            file_name="eye_metrics_report.csv",
-            mime="text/csv"
-        )
-
-    with dl_col3:
-        st.download_button(
-            label="📍 Download Point Coordinates (JSON)",
-            data=points_json,
-            file_name="boundary_points.json",
-            mime="application/json"
-        )
-
-    # Optional Preprocessing View
-    if show_prep_checkbox:
-        st.markdown("---")
-        st.subheader("🔍 Processing Details & CV Pipeline Stages")
-        grid_dict = create_preprocessing_thumbnail_grid(results["prep_dict"])
-        p_cols = st.columns(len(grid_dict))
-        for idx, (title, img_arr) in enumerate(grid_dict.items()):
-            with p_cols[idx]:
-                st.markdown(f"**{title}**")
-                st.image(img_arr, use_container_width=True)
+    st.subheader("📥 Export Datasets & Annotation Keypoints")
+    dl1, dl2, dl3, dl4, dl5 = st.columns(5)
+    with dl1:
+        st.download_button("📥 Annotated Image (PNG)", data=numpy_to_png_bytes(annotated_rgb), file_name=f"annotated_{image_name}", mime="image/png")
+    with dl2:
+        st.download_button("🖤 Annotation-Only Mask (PNG)", data=numpy_to_png_bytes(mask_only_rgb), file_name=f"mask_{image_name}", mime="image/png")
+    with dl3:
+        st.download_button("📊 Metrics Report (CSV)", data=export_image_metrics_csv(analytics_dict), file_name="eye_metrics.csv", mime="text/csv")
+    with dl4:
+        coco_json = export_coco_keypoints_json(image_name, w, h, points_data, pupil_res.center, iris_res.center)
+        st.download_button("🤖 COCO Keypoints (JSON)", data=coco_json, file_name="coco_keypoints.json", mime="application/json")
+    with dl5:
+        yolo_txt = export_yolo_keypoints_txt(w, h, pupil_res.center, iris_res.center, pupil_res.radius, iris_res.radius, points_data)
+        st.download_button("⚡ YOLO Keypoints (TXT)", data=yolo_txt, file_name="yolo_keypoints.txt", mime="text/plain")
 
 
 # ==========================================
-# MODE 2: BATCH PROCESSING MODE
+# 3. VIDEO ANNOTATION MODE
 # ==========================================
-elif app_mode == "📁 Batch Processing Mode":
-    st.subheader("📁 Batch Image Processing Mode")
-    st.write("Upload multiple eye images to process and annotate them automatically in batch mode.")
-    
-    batch_files = st.file_uploader(
-        "Upload Multiple Eye Images (JPG, PNG)",
-        type=["jpg", "jpeg", "png"],
-        accept_multiple_files=True
-    )
-    
-    if batch_files:
-        st.info(f"Loaded {len(batch_files)} images for batch processing.")
-        if st.button("🚀 Start Batch Annotation"):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            batch_results = []
-            
-            for idx, bfile in enumerate(batch_files):
-                status_text.text(f"Processing image {idx+1}/{len(batch_files)}: {bfile.name}")
-                file_bytes = bfile.read()
-                img_rgb = load_image_from_bytes(file_bytes)
-                
-                res = process_single_eye_image(img_rgb)
-                
-                batch_results.append({
-                    "filename": bfile.name,
-                    "image_rgb": res["annotated_rgb"],
-                    "metrics": res["analytics"]
-                })
-                
-                progress_bar.progress((idx + 1) / len(batch_files))
-                
-            status_text.text("✅ Batch processing complete!")
-            
-            # Create summary dataframe
-            summary_metrics = [r["metrics"] for r in batch_results]
-            for idx, r in enumerate(summary_metrics):
-                r["filename"] = batch_results[idx]["filename"]
-                
-            df_summary = pd.DataFrame(summary_metrics)
-            st.dataframe(df_summary, use_container_width=True)
-            
-            # Zip download
-            zip_bytes = create_batch_zip(batch_results)
-            st.download_button(
-                label="📦 Download Batch Results (ZIP)",
-                data=zip_bytes,
-                file_name="batch_eye_annotations.zip",
-                mime="application/zip"
+elif nav_page == "🎥 Video Annotation":
+    st.subheader("🎥 Video Eye Boundary Detection & Temporal Kalman Tracking")
+
+    v_col1, v_col2 = st.columns([2, 1])
+    with v_col1:
+        uploaded_video = st.file_uploader("Upload Eye Video (MP4, AVI, MOV, MKV)", type=["mp4", "avi", "mov", "mkv"])
+    with v_col2:
+        sample_video_dir = os.path.join(os.path.dirname(__file__), "sample_videos")
+        sample_v_files = [f for f in os.listdir(sample_video_dir) if f.endswith((".mp4", ".avi"))] if os.path.exists(sample_video_dir) else []
+        selected_v_sample = st.selectbox("Or choose a sample video", ["-- Select Sample Video --"] + sample_v_files)
+
+    st.markdown("---")
+    st.subheader("⚙️ Video Processing Settings")
+    ctrl1, ctrl2, ctrl3, ctrl4 = st.columns(4)
+    with ctrl1:
+        det_mode = st.selectbox(
+            "Detection Mode",
+            [
+                "EASY ROBUST (⚡ Eyelash-Immune & Blink-Proof - Recommended)",
+                "INSTANT (⚡ Real-Time 60+ FPS)",
+                "BALANCED (Tracking + Periodic Re-Detection)",
+                "HIGH ACCURACY (Deep Direct Detection)",
+                "FAST"
+            ],
+            index=0
+        )
+    with ctrl2:
+        frame_skip = st.selectbox("Frame Skipping", [1, 2, 5, 10], index=0)
+    with ctrl3:
+        smoothing_mode = st.selectbox("Temporal Tracking", ["Kalman Constant Velocity", "MEDIUM", "OFF"], index=0)
+    with ctrl4:
+        render_mode_choice = st.selectbox(
+            "Video Output Format",
+            [
+                "Both (Annotated + Annotation-Only)",
+                "Annotated Video Only",
+                "Annotation-Only Video (Pure Mask)"
+            ],
+            index=0,
+            help="Choose whether to generate standard annotated video, pure annotation mask video on black canvas, or both."
+        )
+
+    render_mode_map = {
+        "Both (Annotated + Annotation-Only)": "both",
+        "Annotated Video Only": "annotated",
+        "Annotation-Only Video (Pure Mask)": "annotation_only"
+    }
+    render_mode = render_mode_map.get(render_mode_choice, "both")
+
+    input_video_path = None
+    if uploaded_video is not None:
+        file_key = f"{uploaded_video.name}_{uploaded_video.size}"
+        cached_path = st.session_state.get("cached_video_path")
+        if st.session_state.get("cached_video_key") != file_key or not cached_path or not os.path.exists(cached_path):
+            uploaded_video.seek(0)
+            orig_ext = os.path.splitext(uploaded_video.name)[1] or ".mp4"
+            t_file = tempfile.NamedTemporaryFile(delete=False, suffix=orig_ext)
+            t_file.write(uploaded_video.read())
+            t_file.flush()
+            t_file.close()
+            st.session_state["cached_video_path"] = t_file.name
+            st.session_state["cached_video_key"] = file_key
+            st.session_state["video_results"] = None
+        input_video_path = st.session_state.get("cached_video_path")
+    elif selected_v_sample != "-- Select Sample Video --":
+        input_video_path = os.path.join(sample_video_dir, selected_v_sample)
+
+    start_process = False
+    start_stream = False
+    custom_anchor_dict = None
+
+    if input_video_path and os.path.exists(input_video_path):
+        cap_p = cv2.VideoCapture(input_video_path)
+        ret0, f0_bgr = cap_p.read()
+        cap_p.release()
+
+        if ret0:
+            fh0, fw0 = f0_bgr.shape[:2]
+            from src.fast_video_annotator import _fast_detect_anchor, detect_pupil_eyelash_immune
+
+            # Initialize anchor for this video if changed
+            if st.session_state.get("anchor_vid_key") != input_video_path:
+                p_anc, i_anc = _fast_detect_anchor(f0_bgr)
+                st.session_state["anchor_vid_key"] = input_video_path
+                st.session_state["anchor_cx"] = float(p_anc["cx"])
+                st.session_state["anchor_cy"] = float(p_anc["cy"])
+                st.session_state["anchor_pr"] = float(p_anc["rx"])
+                st.session_state["anchor_ir"] = float(i_anc["rx"])
+
+            st.markdown("### 🎯 Easy 1-Click Setup & Frame 0 Verification")
+            st.caption("The system has automatically locked onto the real pupil disc (immune to eyelashes & blinks). You can review Frame 0 below or fine-tune before processing.")
+
+            with st.expander("🛠️ Fine-Tune Anchor (Optional Nudge)", expanded=False):
+                tune1, tune2, tune3, tune4 = st.columns(4)
+                with tune1:
+                    adj_cx = st.number_input("Pupil Center X", 0, fw0, int(round(st.session_state.get("anchor_cx", fw0 // 2))), step=1)
+                with tune2:
+                    adj_cy = st.number_input("Pupil Center Y", 0, fh0, int(round(st.session_state.get("anchor_cy", fh0 // 2))), step=1)
+                with tune3:
+                    adj_pr = st.number_input("Pupil Radius (px)", 4, int(min(fw0, fh0) * 0.25), int(round(st.session_state.get("anchor_pr", 40))), step=1)
+                with tune4:
+                    adj_ir = st.number_input("Iris Radius (px)", 10, int(min(fw0, fh0) * 0.5), int(round(st.session_state.get("anchor_ir", int(st.session_state.get("anchor_pr", 40) * 2.65)))), step=1)
+                st.session_state["anchor_cx"] = adj_cx
+                st.session_state["anchor_cy"] = adj_cy
+                st.session_state["anchor_pr"] = adj_pr
+                st.session_state["anchor_ir"] = adj_ir
+
+            acx = float(st.session_state.get("anchor_cx", fw0 // 2))
+            acy = float(st.session_state.get("anchor_cy", fh0 // 2))
+            apr = float(st.session_state.get("anchor_pr", 40.0))
+            air = float(st.session_state.get("anchor_ir", apr * 2.65))
+
+            custom_anchor_dict = {
+                "cx": acx,
+                "cy": acy,
+                "pupil_radius": apr,
+                "iris_radius": air
+            }
+
+            f0_viz = f0_bgr.copy()
+            cv2.circle(f0_viz, (int(round(acx)), int(round(acy))), int(round(air)), (0, 190, 255), 2, cv2.LINE_AA)
+            cv2.circle(f0_viz, (int(round(acx)), int(round(acy))), int(round(apr)), (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.drawMarker(f0_viz, (int(round(acx)), int(round(acy))), (0, 255, 0), cv2.MARKER_CROSS, 10, 1, cv2.LINE_AA)
+            cv2.putText(f0_viz, f"Frame 0 Anchor | Pupil: r={apr:.0f}px | Iris: r={air:.0f}px", (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2, cv2.LINE_AA)
+
+            pv_col1, pv_col2 = st.columns([1, 1])
+            with pv_col1:
+                st.image(cv2.cvtColor(f0_viz, cv2.COLOR_BGR2RGB), caption="Frame 0 Verified Anchor (Green: Pupil, Orange: Iris)", use_container_width=True)
+            with pv_col2:
+                st.success("✅ **Anchor Locked**: Pupil & Iris boundaries are centered on the pupil disc.")
+                start_process = st.button("⚡ Easy One-Click Video Annotation (Eyelash-Immune & Fast)", type="primary", use_container_width=True)
+                start_stream = st.button("▶️ Live Stream Annotations (Real-Time Playback)", use_container_width=True)
+    else:
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
+            start_process = st.button("🚀 Process Video (Immediate)", type="primary")
+        with btn_col2:
+            start_stream = st.button("▶️ Live Stream Annotations (Real-Time Playback)")
+
+    if input_video_path and start_stream:
+        st.markdown("### 👁️ Live Real-Time Annotation Stream")
+        live_spot = st.empty()
+        live_cap = cv2.VideoCapture(input_video_path)
+        from src.fast_video_annotator import detect_pupil_eyelash_immune
+
+        ret0, f0 = live_cap.read()
+        if ret0:
+            fh0, fw0 = f0.shape[:2]
+            ksize = max(11, int(min(fw0, fh0) * 0.015) | 1)
+            k_disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+            b_mask = np.zeros((fh0, fw0), dtype=np.uint8)
+            b_mask[int(fh0*0.08):int(fh0*0.92), int(fw0*0.08):int(fw0*0.92)] = 255
+            min_r = 0.015 * min(fh0, fw0)
+            max_r = 0.22 * min(fh0, fw0)
+
+            acx = float(st.session_state.get("anchor_cx", fw0 // 2))
+            acy = float(st.session_state.get("anchor_cy", fh0 // 2))
+            apr = float(st.session_state.get("anchor_pr", 40.0))
+            air = float(st.session_state.get("anchor_ir", apr * 2.65))
+            curr_p = (acx, acy, apr, apr, 0.0)
+            ir_ratio = air / max(1.0, apr)
+
+            f_num = 0
+            while True:
+                ret_f, f_bgr = live_cap.read()
+                if not ret_f:
+                    break
+                f_num += 1
+                if f_num % frame_skip != 0:
+                    continue
+
+                cand, status, circ = detect_pupil_eyelash_immune(f_bgr, curr_p, k_disk, b_mask, min_r, max_r)
+                if cand is not None:
+                    curr_p = (
+                        curr_p[0] * 0.35 + cand[0] * 0.65,
+                        curr_p[1] * 0.35 + cand[1] * 0.65,
+                        curr_p[2] * 0.35 + cand[2] * 0.65,
+                        curr_p[3] * 0.35 + cand[3] * 0.65,
+                        cand[4]
+                    )
+                    disp_status = status
+                    color = (0, 255, 0)
+                else:
+                    disp_status = "BLINK (LOCKED)"
+                    color = (0, 165, 255)
+
+                pcx, pcy, prx, pry, pang = curr_p
+                irx, iry = prx * ir_ratio, pry * ir_ratio
+
+                cv2.ellipse(f_bgr, (int(pcx), int(pcy)), (int(max(4, irx)), int(max(4, iry))), int(pang), 0, 360, (0, 190, 255), 2, cv2.LINE_AA)
+                cv2.ellipse(f_bgr, (int(pcx), int(pcy)), (int(max(2, prx)), int(max(2, pry))), int(pang), 0, 360, (0, 255, 0), 2, cv2.LINE_AA)
+                cv2.drawMarker(f_bgr, (int(pcx), int(pcy)), (0, 255, 0), cv2.MARKER_CROSS, 8, 1, cv2.LINE_AA)
+                cv2.putText(f_bgr, f"LIVE TRACKING | Frame {f_num} | {disp_status}", (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+
+                live_spot.image(cv2.cvtColor(f_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
+                time.sleep(0.015)
+            live_cap.release()
+
+    if input_video_path and start_process:
+        output_temp_video = os.path.join(tempfile.gettempdir(), f"annotated_eye_output_{int(time.time())}.mp4")
+        progress_bar = st.progress(0.0)
+        status_text = st.empty()
+
+        def update_progress(pct: float, msg: str):
+            progress_bar.progress(pct)
+            status_text.text(msg)
+
+        with st.spinner("Processing video frames with high-speed eyelash-immune tracker..."):
+            results = process_eye_video(
+                input_video_path,
+                output_temp_video,
+                detection_mode=det_mode,
+                frame_skip=frame_skip,
+                num_points=num_points,
+                theme=theme,
+                smoothing_mode=smoothing_mode,
+                sensitivity=sensitivity,
+                render_mode=render_mode,
+                annotation_style=boundary_style,
+                show_values=show_values,
+                values_format=values_format,
+                custom_anchor=custom_anchor_dict,
+                progress_callback=update_progress
             )
 
+        st.session_state["video_results"] = results
+        status_text.text(f"✅ Complete in {results['processing_time_sec']}s ({results['processing_fps']} FPS)!")
+
+    v_res = st.session_state.get("video_results", None)
+    if v_res is not None:
+        st.markdown("---")
+        st.subheader("📊 Video Detection Statistics")
+        ann_path = v_res.get("annotated_video_path")
+        mask_path = v_res.get("annotation_only_video_path")
+
+        # Video Player View Selector
+        available_views = []
+        if ann_path and os.path.exists(ann_path):
+            available_views.append("👁️ Annotated Video (Original + Overlay)")
+        if mask_path and os.path.exists(mask_path):
+            available_views.append("🖤 Annotation-Only Video (Pure Mask)")
+
+        if available_views:
+            if len(available_views) > 1:
+                selected_video_view = st.radio("Select Video Preview:", available_views, horizontal=True)
+            else:
+                selected_video_view = available_views[0]
+
+            if selected_video_view.startswith("👁️") and ann_path and os.path.exists(ann_path):
+                st.video(ann_path)
+            elif mask_path and os.path.exists(mask_path):
+                st.video(mask_path)
+        elif os.path.exists(v_res.get("output_video_path", "")):
+            st.video(v_res["output_video_path"])
+
+        s1, s2, s3, s4, s5 = st.columns(5)
+        with s1:
+            st.metric("Total Frames", v_res["total_frames"])
+            st.metric("Processed Frames", v_res["processed_frames"])
+        with s2:
+            st.metric("Successful Detections", v_res["successful_detections"])
+            st.metric("Pupil Detection Rate", f"{v_res['pupil_detection_rate']}%")
+        with s3:
+            st.metric("Predicted Frames", v_res["predicted_frames"])
+            st.metric("Iris Detection Rate", f"{v_res['iris_detection_rate']}%")
+        with s4:
+            st.metric("Failed Frames", v_res["failed_frames"])
+            st.metric("Avg Overall Confidence", f"{v_res['avg_overall_confidence']}%")
+        with s5:
+            st.metric("Processing Time", f"{v_res['processing_time_sec']} s")
+            st.metric("Processing Speed", f"{v_res['processing_fps']} FPS")
+
+        st.markdown("---")
+        st.subheader("📥 Export Video Results")
+        export_slots = []
+        if ann_path and os.path.exists(ann_path):
+            export_slots.append(("annotated", ann_path))
+        if mask_path and os.path.exists(mask_path):
+            export_slots.append(("mask", mask_path))
+        export_slots.append(("csv", None))
+        export_slots.append(("json", None))
+
+        v_cols = st.columns(len(export_slots))
+        for col_i, (slot_type, fpath) in enumerate(export_slots):
+            with v_cols[col_i]:
+                if slot_type == "annotated":
+                    with open(fpath, "rb") as vf:
+                        f_ext = os.path.splitext(fpath)[1].lower()
+                        mime_t = "video/mp4" if f_ext == ".mp4" else "video/avi"
+                        st.download_button(
+                            f"📥 Download Annotated Video ({f_ext.upper().strip('.')})",
+                            data=vf.read(),
+                            file_name=f"annotated_eye_video{f_ext}",
+                            mime=mime_t
+                        )
+                elif slot_type == "mask":
+                    with open(fpath, "rb") as vf:
+                        f_ext = os.path.splitext(fpath)[1].lower()
+                        mime_t = "video/mp4" if f_ext == ".mp4" else "video/avi"
+                        st.download_button(
+                            f"🖤 Download Annotation-Only Video ({f_ext.upper().strip('.')})",
+                            data=vf.read(),
+                            file_name=f"annotation_only_video{f_ext}",
+                            mime=mime_t
+                        )
+                elif slot_type == "csv":
+                    csv_str = export_video_metrics_csv(v_res["frame_logs"])
+                    st.download_button("📊 Video Metrics (CSV)", data=csv_str, file_name="video_metrics.csv", mime="text/csv")
+                elif slot_type == "json":
+                    json_str = export_video_metrics_json(v_res, v_res["frame_logs"])
+                    st.download_button("📍 Full Video Data (JSON)", data=json_str, file_name="video_metrics.json", mime="application/json")
+
 
 # ==========================================
-# MODE 3: SYNTHETIC BENCHMARK LAB
+# 4. FRAME EXPLORER MODE
 # ==========================================
-elif app_mode == "🧪 Synthetic Benchmark Lab":
-    st.subheader("🧪 Interactive Synthetic Eye Benchmark Lab")
-    st.write("Stress-test the computer vision detection algorithm by generating synthetic eyes with custom parameters.")
-    
-    b_col1, b_col2 = st.columns([1, 2])
-    
-    with b_col1:
-        st.markdown("#### Synthetic Image Controls")
-        syn_pr = st.slider("Ground Truth Pupil Radius", 20, 80, 45)
-        syn_ir = st.slider("Ground Truth Iris Radius", 80, 180, 120)
-        syn_off_x = st.slider("Pupil Offset X", -30, 30, 0)
-        syn_off_y = st.slider("Pupil Offset Y", -30, 30, 0)
-        syn_glint = st.checkbox("Include Specular Glint", value=True)
-        syn_noise = st.slider("Noise Level", 0.0, 0.15, 0.03, step=0.01)
-        syn_blur = st.slider("Blur Kernel Level", 1, 9, 1, step=2)
+elif nav_page == "🎞️ Frame Explorer":
+    st.subheader("🎞️ Frame-by-Frame Inspection & Key-Frame Diagnostics")
 
-    with b_col2:
-        syn_rgb, gt = generate_synthetic_eye(
-            width=600, height=450,
-            pupil_r=syn_pr, iris_r=syn_ir,
-            pupil_offset=(syn_off_x, syn_off_y),
-            glint=syn_glint, noise_level=syn_noise, blur_level=syn_blur
+    v_res = st.session_state.get("video_results", None)
+
+    if v_res is None or not v_res.get("original_frames"):
+        st.warning("⚠️ No video has been processed yet. Go to '🎥 Video Annotation' and process a video first.")
+    else:
+        total_proc = len(v_res["original_frames"])
+        
+        # Key frames jump shortcuts
+        k1, k2 = st.columns(2)
+        with k1:
+            best_idx = st.selectbox("⭐ Jump to High-Confidence Frame", ["-- Select --"] + [f"Frame {idx} (Conf: {v_res['frame_logs'][idx]['overall_confidence']}%)" for idx in v_res.get("best_10_indices", [])])
+        with k2:
+            worst_idx = st.selectbox("⚠️ Jump to Low-Confidence Frame", ["-- Select --"] + [f"Frame {idx} (Conf: {v_res['frame_logs'][idx]['overall_confidence']}%)" for idx in v_res.get("worst_10_indices", [])])
+
+        curr_frame = 0
+        if best_idx != "-- Select --":
+            curr_frame = int(best_idx.split()[1])
+        elif worst_idx != "-- Select --":
+            curr_frame = int(worst_idx.split()[1])
+
+        frame_idx = st.slider("Select Frame Index", min_value=0, max_value=total_proc - 1, value=min(curr_frame, total_proc - 1))
+
+        orig_frame = v_res["original_frames"][frame_idx]
+        ann_frame = v_res["annotated_frames"][frame_idx]
+        mask_frames = v_res.get("annotation_only_frames", [])
+        mask_frame = mask_frames[frame_idx] if frame_idx < len(mask_frames) else None
+        log = v_res["frame_logs"][frame_idx]
+
+        status = log["detection_status"]
+        if status == "DETECTED":
+            badge_html = '<span class="status-badge badge-detected">DETECTED</span>'
+        elif status == "PREDICTED":
+            badge_html = '<span class="status-badge badge-low-confidence">PREDICTED</span>'
+        else:
+            badge_html = '<span class="status-badge badge-not-detected">NOT DETECTED</span>'
+
+        st.markdown(f"#### Frame {log['frame_number']} ({log['timestamp_sec']}s) — Detection Status: {badge_html}", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        if mask_frame is not None:
+            f1, f2, f3 = st.columns(3)
+            with f1:
+                st.markdown("#### Original Frame")
+                st.image(orig_frame, use_container_width=True)
+            with f2:
+                st.markdown("#### Annotated Frame")
+                st.image(ann_frame, use_container_width=True)
+            with f3:
+                st.markdown("#### Annotation Only (Mask)")
+                st.image(mask_frame, use_container_width=True)
+        else:
+            f1, f2 = st.columns(2)
+            with f1:
+                st.markdown("#### Original Frame")
+                st.image(orig_frame, use_container_width=True)
+            with f2:
+                st.markdown("#### Annotated Frame")
+                st.image(ann_frame, use_container_width=True)
+
+        st.markdown("---")
+        fd1, fd2, fd3, fd4 = st.columns(4)
+        with fd1:
+            st.metric("Pupil Center (X, Y)", f"({log['pupil_center_x']}, {log['pupil_center_y']})")
+            st.metric("Pupil Radius", f"{log['pupil_radius']} px")
+        with fd2:
+            st.metric("Iris Center (X, Y)", f"({log['iris_center_x']}, {log['iris_center_y']})")
+            st.metric("Iris Radius", f"{log['iris_radius']} px")
+        with fd3:
+            st.metric("Pupil Confidence", f"{log['pupil_confidence']}%")
+            st.metric("Iris Confidence", f"{log['iris_confidence']}%")
+        with fd4:
+            st.metric("Overall Confidence", f"{log['overall_confidence']}%")
+            st.metric("Detection Status", log["detection_status"])
+
+
+# ==========================================
+# 5. ANALYTICS & GRAPHS
+# ==========================================
+elif nav_page == "📊 Analytics & Graphs":
+    st.subheader("📊 Temporal Eye Tracking & PLR Analytics")
+
+    v_res = st.session_state.get("video_results", None)
+
+    if v_res is None or not v_res.get("frame_logs"):
+        st.info("💡 Process a video in '🎥 Video Annotation' to generate video analytics charts.")
+    else:
+        df_logs = pd.DataFrame(v_res["frame_logs"])
+        df_logs = compute_video_plr_dynamics(df_logs)
+
+        charts_png = generate_video_tracking_charts(df_logs)
+        st.image(charts_png, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("#### Frame-by-Frame Metrics & Dilation Velocity Log")
+        st.dataframe(df_logs, use_container_width=True)
+
+
+# ==========================================
+# 6. DETECTION DIAGNOSTICS (NEW)
+# ==========================================
+elif nav_page == "🔬 Detection Diagnostics":
+    st.subheader("🔬 Multi-Stage Candidate Debugger & Pipeline Diagnostics")
+
+    data = st.session_state.get("last_image_data", None)
+
+    if data is None:
+        st.info("💡 Process an image in '👁️ Image Annotation' first to inspect intermediate diagnostics.")
+    else:
+        diag_grid = generate_diagnostics_image_grid(
+            data["original_rgb"],
+            data["prep_dict"],
+            data["pupil_res"],
+            data["iris_res"],
+            eyelid_obj=data.get("eyelid_obj"),
+            glint_mask=data.get("glint_mask")
         )
-        
-        bench_res = process_single_eye_image(syn_rgb)
-        
-        st.markdown("#### Benchmark Evaluation")
-        eval_col1, eval_col2 = st.columns(2)
-        with eval_col1:
-            st.image(syn_rgb, caption="Synthetic Ground Truth Image", use_container_width=True)
-        with eval_col2:
-            st.image(bench_res["annotated_rgb"], caption="Algorithm Detected Output", use_container_width=True)
 
-        # Accuracy comparison table
-        gt_px, gt_py = gt["pupil_center"]
-        det_px, det_py = bench_res["analytics"]["pupil_center_x"], bench_res["analytics"]["pupil_center_y"]
-        p_error = np.sqrt((gt_px - det_px)**2 + (gt_py - det_py)**2)
-        
-        st.markdown("#### Ground Truth vs Detected Accuracy")
-        st.write(f"• Pupil Center Error: **{p_error:.2f} px**")
-        st.write(f"• Pupil Radius Error: **{abs(gt['pupil_radius'] - bench_res['analytics']['pupil_radius_px']):.2f} px**")
-        st.write(f"• Iris Radius Error: **{abs(gt['iris_radius'] - bench_res['analytics']['iris_radius_px']):.2f} px**")
+        st.markdown("### 🧩 Intermediate Computer Vision Stages")
+        cols = st.columns(3)
+        stage_keys = list(diag_grid.keys())
+        for idx, k in enumerate(stage_keys):
+            with cols[idx % 3]:
+                st.markdown(f"##### {k}")
+                st.image(diag_grid[k], use_container_width=True)
 
+        st.markdown("---")
+        st.markdown("### 📐 Quantitative Confidence & Plausibility Breakdown")
+        rep = get_diagnostics_report(data["pupil_res"], data["iris_res"], data.get("conf_dict", {}))
 
-# ==========================================
-# MODE 4: BIOMETRIC ANALYTICS
-# ==========================================
-elif app_mode == "📊 Biometric Analytics":
-    st.subheader("📊 Biometric Intensity Profile & Radial Cross-Section")
-    st.write("Analyzes the brightness profile across the horizontal center line of the pupil and iris.")
-    
-    # Process default or sample image
-    default_rgb, _ = generate_synthetic_eye(width=600, height=450, pupil_r=45, iris_r=120)
-    res = process_single_eye_image(default_rgb)
-    an = res["analytics"]
-    
-    profile_png = generate_intensity_profile_plot(
-        an["profile_x"],
-        an["profile_intensity"],
-        an["pupil_center_x"],
-        an["pupil_radius_px"],
-        an["iris_center_x"],
-        an["iris_radius_px"]
-    )
-    
-    st.image(profile_png, use_container_width=True)
-    
-    st.markdown("#### Diagnostic Insights")
-    st.write("""
-    - **Pupil Region**: Corresponds to the deepest intensity trough (darkest gray values near 0-40).
-    - **Iris Region**: Intermediate intensity band (values around 60-120) with characteristic texture fluctuations.
-    - **Sclera Boundary**: Sharp intensity gradient transition upwards to high values (200-245).
-    """)
+        if rep["is_valid"]:
+            st.success(f"✅ Geometric Plausibility: VALID | Overall Calibrated Confidence: {rep['overall_confidence']}% ({rep['status']})")
+        else:
+            st.error(f"❌ Geometric Plausibility: REJECTED (Hard Gate = 0.0) | Overall Confidence: {rep['overall_confidence']}% ({rep['status']})")
+            st.markdown("##### ⚠️ Active Physical Constraint Failures:")
+            for pf in rep["plain_failures"]:
+                st.markdown(f"- 🔴 **{pf}**")
+
+        st.markdown("##### ⚖️ Confidence Calibration Weights & Evidence Values:")
+        st.dataframe(pd.DataFrame(rep["components_table"]), use_container_width=True)
 
 
 # ==========================================
-# MODE 5: HOW IT WORKS & DEMONSTRATION
+# 7. ABOUT & METHODOLOGY
 # ==========================================
-elif app_mode == "🎓 How It Works":
-    st.subheader("🎓 How The Automated Eye Annotation System Works")
-    st.markdown("""
-    This project automates eye annotation using lightweight, CPU-efficient computer vision algorithms. 
-    It eliminates the need for human operators to manually click points around pupils and irises.
+elif nav_page == "ℹ️ About & Methodology":
+    st.subheader("ℹ️ About the Advanced Eye Annotation System")
+    st.markdown(r"""
+### 📌 Multi-Stage Hybrid Computer Vision Architecture
 
-    ---
+```
+INPUT IMAGE / VIDEO FRAME
+         │
+    ┌────▼────┐
+    │ STAGE 1 │  Image Quality Analysis (sharpness, brightness, contrast, noise, glints)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 2 │  Eye ROI Localization (Haar cascade + adaptive dark-region bounding)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 3 │  Preprocessing Ensemble (CLAHE, Gamma, Morphological, Homomorphic)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 4 │  Specular Glint Detection & Localized Inpainting (Telea)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 5 │  Multi-Candidate Pupil Detector (Adaptive thresh + Otsu + Hough)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 6 │  Eyelid & Eyelash Masking (Parabolic curve fitting)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 7 │  Constrained Annular Iris Search (r = 1.3×pr to 3.5×pr)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 8 │  RANSAC Ellipse Fitting & Texture Verification
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 9 │  Strict 10-Point Geometric Validation & Confidence Fusion
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 10│  Boundary-Refined Annotation Points (Normal gradient snapping)
+    └────┬────┘
+         │
+    ┌────▼────┐
+    │ STAGE 11│  10D Kalman Filter Video Tracking & Key-Frame Quality Control
+    └─────────┘
+```
 
-    ### 🔄 Computer Vision Pipeline Breakdown
+### 🎯 Key Advantages over Traditional Single-Algorithm Detectors
 
-    ```
-    ┌─────────────────────────┐
-    │ 1. Uploaded Eye Image   │
-    └────────────┬────────────┘
-                 ▼
-    ┌─────────────────────────┐
-    │ 2. Preprocessing        │ ── Grayscale, Glint Inpainting, CLAHE Contrast Enhancement
-    └────────────┬────────────┘
-                 ▼
-    ┌─────────────────────────┐
-    │ 3. Pupil Detection      │ ── Multi-Thresholding, Contour Circularity & Darkness Scoring
-    └────────────┬────────────┘
-                 ▼
-    ┌─────────────────────────┐
-    │ 4. Iris Detection       │ ── Pupil Anchor Reference, Radial Integrodifferential Gradient Search
-    └────────────┬────────────┘
-                 ▼
-    ┌─────────────────────────┐
-    │ 5. Point Generation     │ ── Sample N evenly spaced points along circumference θ ∈ [0, 2π)
-    └────────────┬────────────┘
-                 ▼
-    ┌─────────────────────────┐
-    │ 6. Output & Export      │ ── Visual Overlay, Confidence Badge, PNG / CSV / JSON Downloads
-    └─────────────────────────┘
-    ```
-
-    ---
-
-    ### 🛠️ Key Computer Vision Algorithms Used
-    - **CLAHE (Contrast Limited Adaptive Histogram Equalization)**: Enhances local contrast between iris and sclera without blowing out glint reflections.
-    - **Specular Reflection Inpainting**: Detects bright glint spots inside the pupil and inpaints them before contour analysis to prevent boundary distortion.
-    - **Contour Circularity & Candidate Ranking**: Evaluates shape circularity $\\frac{4\\pi A}{P^2}$ and darkness to select true pupil candidates without hardcoded assumptions.
-    - **Daugman-Inspired Radial Integrodifferential Operator**: Computes radial intensity gradient steps along concentric arcs around the pupil center to locate outer iris boundary (limbus).
-    - **Parametric Circumference Sampling**: Evenly distributes $N$ boundary points along $x = cx + r\\cos\\theta, y = cy + r\\sin\\theta$.
+1. **Constrained Annular Search**: The iris is searched strictly relative to the detected pupil anchor within an anatomically realistic annulus (`1.3×pr` to `3.5×pr`), eliminating false detections of the outer eye or skin folds.
+2. **Eyelid Masking**: Horizontal parabolic curves isolate eyelid edges and eyelashes from contaminating the radial gradient search.
+3. **Iris-Sclera Texture Verification**: The boundary is verified to ensure it separates a darker inner iris from a lighter outer sclera.
+4. **Fail-Safe Integrity**: The system prefers `NOT DETECTED` or `LOW CONFIDENCE` over confident wrong circles.
     """)

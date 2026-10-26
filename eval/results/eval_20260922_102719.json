@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-09-22T10:27:19.390475",
+  "video_path": "sample_videos/01_eyes.mp4",
+  "total_frames": 90,
+  "metrics": {
+    "median_pupil_center_error_px": 0.0,
+    "p95_pupil_center_error_px": 0.0,
+    "median_iris_center_error_px": 0.0,
+    "mean_pupil_iou": 0.997,
+    "mean_iris_iou": 0.995,
+    "detection_rate_pct": 100.0,
+    "false_confident_rate_pct": 0.0,
+    "invalid_geometries_count": 0
+  }
+}

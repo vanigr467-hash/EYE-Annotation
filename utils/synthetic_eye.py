@@ -1,6 +1,8 @@
-import numpy as np
+import os
 import cv2
-from typing import Tuple, Dict, Any
+import numpy as np
+import imageio
+from typing import Tuple, Dict, Any, List
 
 def generate_synthetic_eye(
     width: int = 600,
@@ -10,15 +12,11 @@ def generate_synthetic_eye(
     pupil_offset: Tuple[int, int] = (0, 0),
     iris_color: Tuple[int, int, int] = (110, 70, 45), # BGR brown/hazel
     glint: bool = True,
-    noise_level: float = 0.05,
+    noise_level: float = 0.03,
     blur_level: int = 1
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Procedurally generates a realistic synthetic eye image for algorithm testing & demonstration.
-    
-    Returns:
-        image_rgb: np.ndarray (RGB image)
-        ground_truth: dict containing exact center & radius of pupil and iris
     """
     center_x = width // 2 + pupil_offset[0]
     center_y = height // 2 + pupil_offset[1]
@@ -26,7 +24,6 @@ def generate_synthetic_eye(
     # 1. Sclera (Background)
     img = np.zeros((height, width, 3), dtype=np.float32)
     
-    # Radial falloff for sclera lighting
     yy, xx = np.ogrid[:height, :width]
     dist_from_center = np.sqrt((xx - center_x)**2 + (yy - center_y)**2)
     
@@ -35,7 +32,7 @@ def generate_synthetic_eye(
         img[:, :, c] = sclera_base[c] - (dist_from_center / np.max(dist_from_center)) * 25.0
 
     # Add subtle sclera texture/veins
-    noise_veins = np.random.normal(0, 8, (height, width))
+    noise_veins = np.random.normal(0, 6, (height, width))
     for c in range(3):
         img[:, :, c] = np.clip(img[:, :, c] + noise_veins, 0, 255)
 
@@ -62,7 +59,7 @@ def generate_synthetic_eye(
 
     # 3. Pupil Disk (Dark)
     pupil_mask = dist_from_center <= pupil_r
-    pupil_darkness = np.random.normal(18, 4, (height, width)) # Dark grey/black with micro texture
+    pupil_darkness = np.random.normal(18, 4, (height, width))
     for c in range(3):
         img[:, :, c] = np.where(pupil_mask, np.clip(pupil_darkness, 5, 45), img[:, :, c])
 
@@ -95,3 +92,40 @@ def generate_synthetic_eye(
     }
     
     return img_rgb, ground_truth
+
+
+def generate_synthetic_eye_video(
+    output_path: str,
+    total_frames: int = 90,
+    fps: float = 25.0
+) -> str:
+    """
+    Generates a realistic synthetic test video (01_eyes.mp4) with smooth horizontal 
+    and vertical eye gaze movements for temporal tracking tests.
+    """
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    frames = []
+
+    # Create sinusoidal trajectory for smooth eye movement
+    t = np.linspace(0, 2 * np.pi, total_frames)
+    off_x = (np.sin(t) * 35.0).astype(int)
+    off_y = (np.cos(t * 1.5) * 20.0).astype(int)
+
+    for i in range(total_frames):
+        # Slightly modulate pupil radius (light response simulation)
+        pr = int(45 + np.sin(i / 10.0) * 5)
+        ir = 120
+        
+        img_rgb, _ = generate_synthetic_eye(
+            width=640,
+            height=480,
+            pupil_r=pr,
+            iris_r=ir,
+            pupil_offset=(off_x[i], off_y[i]),
+            glint=True,
+            noise_level=0.02
+        )
+        frames.append(img_rgb)
+
+    from utils.video_utils import write_video_file
+    return write_video_file(frames, output_path, fps=fps)

@@ -1,3 +1,8 @@
+"""
+Updated requirements for the Enterprise Eye Annotation Platform.
+Adds FastAPI backend, SQLAlchemy ORM, and related dependencies.
+"""
+# === Existing Dependencies (Preserved) ===
 streamlit>=1.25.0
 opencv-python>=4.8.0.76
 numpy>=1.24.0
@@ -6,3 +11,25 @@ matplotlib>=3.7.0
 scikit-image>=0.20.0
 pandas>=2.0.0
 scipy>=1.10.0
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.8
+
+# === New Dependencies (Enterprise Platform) ===
+# Backend API
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Database ORM
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+
+# HTTP client (Streamlit -> FastAPI)
+httpx>=0.25.0
+
+# Async file handling
+aiofiles>=23.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
